@@ -138,7 +138,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
           </section>
 
           <div className="grid grid-cols-2 gap-3">
-            <Link href="/productos" className="btn-pri grid place-items-center">Productos</Link>
+            <Link href="/venta" className="btn-acc grid place-items-center text-lg">Vender</Link>
             <form action={cerrar}>
               <input type="hidden" name="turno_id" value={turno.id} />
               <button className="btn-sec w-full">Cerrar turno</button>
