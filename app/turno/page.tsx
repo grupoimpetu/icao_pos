@@ -52,18 +52,6 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
     redirect("/turno");
   }
 
-  async function cerrar(formData: FormData) {
-    "use server";
-    const ses = leerSesion();
-    if (!ses) redirect("/login");
-    const { error } = await supabaseAdmin().rpc("cerrar_turno", {
-      p_turno_id: Number(formData.get("turno_id")),
-      p_empleado_id: ses.empleadoId,
-    });
-    if (error) redirect("/turno?e=" + encodeURIComponent(error.message));
-    redirect("/turno");
-  }
-
   async function salir() {
     "use server";
     cerrarSesion();
@@ -139,10 +127,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
 
           <div className="grid grid-cols-2 gap-3">
             <Link href="/venta" className="btn-acc grid place-items-center text-lg">Vender</Link>
-            <form action={cerrar}>
-              <input type="hidden" name="turno_id" value={turno.id} />
-              <button className="btn-sec w-full">Cerrar turno</button>
-            </form>
+            <Link href="/cierre" className="btn-sec grid place-items-center">Cerrar caja</Link>
           </div>
         </>
       ) : (
@@ -158,6 +143,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
       {puede(s.rol, "supervisor") && (
         <div className="flex justify-center gap-6 text-sm text-cafe-700">
           <Link href="/productos" className="underline">Catálogo</Link>
+          <Link href="/dashboard" className="underline">Dashboard</Link>
           {puede(s.rol, "admin") && <Link href="/clientes" className="underline">Clientes y socios</Link>}
         </div>
       )}
