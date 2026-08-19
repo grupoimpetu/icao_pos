@@ -6,7 +6,7 @@
 export type Moneda = "EUR" | "BS" | "USD";
 
 export type Metodo =
-  | "bs_pago_movil" | "efectivo_usd" | "efectivo_eur"
+  | "efectivo_bs" | "bs_pago_movil" | "efectivo_usd" | "efectivo_eur"
   | "tdd" | "tdc" | "zelle" | "binance" | "wallet"
   | "bs_transferencia";   // legado: no se ofrece en caja, se conserva por histórico
 
@@ -20,6 +20,7 @@ type DefMetodo = {
 };
 
 export const METODOS: Record<Metodo, DefMetodo> = {
+  efectivo_bs:      { label: "Efectivo Bs",    moneda: "BS",  refObligatoria: false, redondeo: "bs",     enCaja: true  },
   bs_pago_movil:    { label: "Bs Pago Móvil",  moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   tdd:              { label: "TDD (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   tdc:              { label: "TDC (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
