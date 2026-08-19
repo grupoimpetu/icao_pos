@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/tasa", "schedule": "0 10 * * *" }
+  ]
+}

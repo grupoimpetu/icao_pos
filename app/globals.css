@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { height: 100%; }
+body { @apply bg-cafe-50 text-cafe-900 antialiased; }
+
+/* Targets táctiles mínimos 44px — se opera desde tablet, no desde mouse. */
+@layer components {
+  .btn      { @apply min-h-[44px] px-4 rounded-xl font-semibold transition active:scale-[.98] disabled:opacity-40; }
+  .btn-pri  { @apply btn bg-cafe-800 text-white hover:bg-cafe-700; }
+  .btn-sec  { @apply btn bg-cafe-200 text-cafe-900 hover:bg-cafe-200/70; }
+  .btn-acc  { @apply btn bg-acento text-white hover:bg-acento-dark; }
+  .card     { @apply bg-white rounded-2xl border border-cafe-200 shadow-sm; }
+  .input    { @apply min-h-[44px] w-full px-3 rounded-xl border border-cafe-200 bg-white
+                     focus:outline-none focus:ring-2 focus:ring-acento; }
+  .label    { @apply block text-xs font-semibold uppercase tracking-wide text-cafe-700 mb-1; }
+}
