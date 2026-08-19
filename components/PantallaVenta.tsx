@@ -6,7 +6,7 @@ import { METODOS, METODOS_CAJA, fmtEur, fmtBs, eur, convertir, type Metodo } fro
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
-type Cliente = { id: number; nombre: string; alumno?: string | null; telefono?: string | null; tipo: string; descuento_default_pct: number };
+type Cliente = { id: number; nombre: string; alumno?: string | null; telefono?: string | null; zona?: string | null; tipo: string; descuento_default_pct: number };
 type Motivo = { id: number; motivo: string; pct: number | null; autoriza: string };
 type Linea = { producto_id: number; nombre: string; precio_unit_eur: number; cant: number };
 
@@ -218,7 +218,7 @@ function SelectorCliente({
         <div className="min-w-0">
           <p className="font-bold truncate">{cliente.nombre}</p>
           <p className="text-xs text-cafe-700 truncate">
-            {cliente.alumno ? `Alumna: ${cliente.alumno}` : cliente.tipo}
+            {cliente.alumno ? `Alumna: ${cliente.alumno}` : cliente.tipo}{cliente.zona ? ` · ${cliente.zona}` : ""}
             {cliente.descuento_default_pct > 0 && ` · ${cliente.descuento_default_pct}%`}
           </p>
         </div>
@@ -273,7 +273,7 @@ function SelectorCliente({
 function FormClienteNuevo({
   inicial, onCreado, onCancel,
 }: { inicial: string; onCreado: (c: Cliente) => void; onCancel: () => void }) {
-  const [f, setF] = useState({ nombre: inicial, telefono: "", alumno: "" });
+  const [f, setF] = useState({ nombre: inicial, telefono: "", alumno: "", zona: "" });
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
@@ -285,6 +285,8 @@ function FormClienteNuevo({
         value={f.telefono} onChange={(e) => setF({ ...f, telefono: e.target.value })} />
       <input className="input" placeholder="Alumna (opcional)" value={f.alumno}
         onChange={(e) => setF({ ...f, alumno: e.target.value })} />
+      <input className="input" placeholder="Zona de residencia (ej. El Hatillo)" value={f.zona}
+        onChange={(e) => setF({ ...f, zona: e.target.value })} />
       {err && <p className="text-xs text-red-600 font-semibold">{err}</p>}
       <div className="flex gap-2">
         <button className="btn-acc flex-1" disabled={pend || !f.nombre.trim()}
@@ -310,13 +312,13 @@ function ModalCobro({
   onCerrar: () => void; onListo: (r: any) => void; onError: (m: string) => void;
 }) {
   const subtotal = eur(lineas.reduce((a, l) => a + l.precio_unit_eur * l.cant, 0));
-  // Solo se preselecciona descuento si el cliente ES socio ICAO.
-  // Un cliente normal arranca SIEMPRE en "Sin descuento".
-  const [motivo, setMotivo] = useState<Motivo | null>(
-    cliente.tipo === "socio_icao" && cliente.descuento_default_pct > 0
-      ? motivos.find((m) => m.autoriza === "auto") ?? null
-      : null
-  );
+  // El 5% de socio ICAO va EMBEBIDO en la ficha del cliente: se aplica solo.
+  // NO se ofrece como botón, para que nadie pueda regalárselo a quien quiera.
+  const motivoSocio = motivos.find((m) => m.autoriza === "auto") ?? null;
+  const motivosManuales = motivos.filter((m) => m.autoriza !== "auto");
+  const esSocio = cliente.tipo === "socio_icao" && cliente.descuento_default_pct > 0;
+  const [motivo, setMotivo] = useState<Motivo | null>(esSocio ? motivoSocio : null);
+  const hayManual = !!motivo && motivo.autoriza !== "auto";
   const [pctLibre, setPctLibre] = useState(0);
   const [pin, setPin] = useState("");
   const [pagos, setPagos] = useState<{ metodo: Metodo; montoEur: number; referencia: string }[]>([]);
@@ -356,10 +358,18 @@ function ModalCobro({
 
         <div>
           <p className="label">Descuento</p>
+          {esSocio && (
+            <p className="mb-2 text-sm font-semibold text-green-700">
+              Socio ICAO −{cliente.descuento_default_pct}% · viene en la ficha del cliente,
+              se aplica solo
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setMotivo(null)}
-              className={`btn text-sm ${!motivo ? "bg-cafe-800 text-white" : "bg-cafe-200"}`}>Sin descuento</button>
-            {motivos.map((m) => (
+            <button onClick={() => setMotivo(esSocio ? motivoSocio : null)}
+              className={`btn text-sm ${!hayManual ? "bg-cafe-800 text-white" : "bg-cafe-200"}`}>
+              {esSocio ? "Solo socio ICAO" : "Sin descuento"}
+            </button>
+            {motivosManuales.map((m) => (
               <button key={m.id} onClick={() => setMotivo(m)}
                 className={`btn text-sm ${motivo?.id === m.id ? "bg-cafe-800 text-white" : "bg-cafe-200"}`}>
                 {m.motivo}{m.pct !== null ? ` ${m.pct}%` : ""}
