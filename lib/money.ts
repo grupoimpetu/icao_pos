@@ -6,18 +6,34 @@
 export type Moneda = "EUR" | "BS" | "USD";
 
 export type Metodo =
-  | "bs_transferencia" | "bs_pago_movil" | "efectivo_usd"
-  | "efectivo_eur" | "tdd" | "tdc" | "wallet";
+  | "bs_pago_movil" | "efectivo_usd" | "efectivo_eur"
+  | "tdd" | "tdc" | "zelle" | "binance" | "wallet"
+  | "bs_transferencia";   // legado: no se ofrece en caja, se conserva por histórico
 
-export const METODOS: Record<Metodo, { label: string; moneda: Moneda; refObligatoria: boolean }> = {
-  bs_transferencia: { label: "Bs Transferencia", moneda: "BS",  refObligatoria: true  },
-  bs_pago_movil:    { label: "Bs Pago Móvil",    moneda: "BS",  refObligatoria: true  },
-  tdd:              { label: "TDD (punto)",      moneda: "BS",  refObligatoria: true  },
-  tdc:              { label: "TDC (punto)",      moneda: "BS",  refObligatoria: true  },
-  efectivo_usd:     { label: "Efectivo USD",     moneda: "USD", refObligatoria: false },
-  efectivo_eur:     { label: "Efectivo EUR",     moneda: "EUR", refObligatoria: false },
-  wallet:           { label: "Wallet ICAO",      moneda: "EUR", refObligatoria: false },
+type DefMetodo = {
+  label: string;
+  moneda: Moneda;
+  refObligatoria: boolean;
+  /** "cash" redondea a $0.25 (vuelto físico). "exacto" deja 2 decimales. */
+  redondeo: "cash" | "exacto" | "bs";
+  enCaja: boolean;
 };
+
+export const METODOS: Record<Metodo, DefMetodo> = {
+  bs_pago_movil:    { label: "Bs Pago Móvil",  moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
+  tdd:              { label: "TDD (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
+  tdc:              { label: "TDC (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
+  efectivo_usd:     { label: "Efectivo USD",   moneda: "USD", refObligatoria: false, redondeo: "cash",   enCaja: true  },
+  efectivo_eur:     { label: "Efectivo EUR",   moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: true  },
+  zelle:            { label: "Zelle ($)",      moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
+  binance:          { label: "Binance (USDT)", moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
+  wallet:           { label: "Wallet ICAO",    moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },
+  // Transferencia en Bs se retiró de caja: operativamente es lo mismo que Pago Móvil.
+  bs_transferencia: { label: "Bs Transferencia", moneda: "BS", refObligatoria: true, redondeo: "bs",     enCaja: false },
+};
+
+/** Los que se muestran al barista, en el orden en que se usan. */
+export const METODOS_CAJA = (Object.keys(METODOS) as Metodo[]).filter((m) => METODOS[m].enCaja);
 
 export const eur = (n: number) => Math.round(n * 100) / 100;
 
@@ -29,9 +45,14 @@ export const aUsdCash = (montoEur: number, tasaEurUsd: number) =>
   Math.ceil(eur(montoEur) * tasaEurUsd * 4) / 4;
 
 export function convertir(montoEur: number, metodo: Metodo, tasaEurBs: number, tasaEurUsd: number) {
-  const { moneda } = METODOS[metodo];
-  if (moneda === "BS")  return { moneda, monto: aBs(montoEur, tasaEurBs),      tasa: tasaEurBs };
-  if (moneda === "USD") return { moneda, monto: aUsdCash(montoEur, tasaEurUsd), tasa: tasaEurUsd };
+  const { moneda, redondeo } = METODOS[metodo];
+  if (moneda === "BS")  return { moneda, monto: aBs(montoEur, tasaEurBs), tasa: tasaEurBs };
+  if (moneda === "USD") {
+    // Zelle y Binance son electrónicos: se transfiere el monto exacto.
+    // Solo el efectivo se redondea a $0.25 porque el vuelto es físico.
+    const monto = redondeo === "cash" ? aUsdCash(montoEur, tasaEurUsd) : eur(montoEur * tasaEurUsd);
+    return { moneda, monto, tasa: tasaEurUsd };
+  }
   return { moneda, monto: eur(montoEur), tasa: 1 };
 }
 
