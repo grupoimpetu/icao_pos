@@ -80,9 +80,9 @@ export default function PantallaVenta({
   if (recibo) return <Recibo r={recibo} onNuevo={limpiar} />;
 
   return (
-    <main className="min-h-screen flex flex-col lg:flex-row">
+    <main className="min-h-screen w-full overflow-x-hidden flex flex-col lg:flex-row">
       {/* ---------- IZQUIERDA: catálogo ---------- */}
-      <section className="flex-1 p-4 lg:p-6 space-y-4">
+      <section className="flex-1 min-w-0 p-4 lg:p-6 space-y-4">
         <header className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-cafe-700">{empleado.rol}</p>
@@ -100,7 +100,7 @@ export default function PantallaVenta({
         />
 
         {!busca && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
             {categorias.map((c) => (
               <button key={c} onClick={() => setCat(c)}
                 className={`btn whitespace-nowrap text-sm ${c === cat ? "bg-cafe-800 text-white" : "bg-cafe-200 text-cafe-900"}`}>
@@ -123,7 +123,7 @@ export default function PantallaVenta({
       </section>
 
       {/* ---------- DERECHA: ticket ---------- */}
-      <aside className="lg:w-[420px] bg-white border-l border-cafe-200 p-4 lg:p-6 flex flex-col gap-4">
+      <aside className="w-full lg:w-[420px] lg:shrink-0 bg-white border-l border-cafe-200 p-4 lg:p-6 flex flex-col gap-4">
         <SelectorCliente cliente={cliente} genericos={genericos} onPick={setCliente} />
 
         <div className="flex-1 overflow-y-auto min-h-[120px]">
