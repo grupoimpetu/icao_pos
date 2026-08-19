@@ -22,7 +22,7 @@ export default async function ClientesPage({
   const PCT = Number(pctSocio?.pct ?? 5);
 
   let q = db.from("clientes")
-    .select("id,nombre,alumno,telefono,tipo,descuento_default_pct,es_generico,activo")
+    .select("id,nombre,alumno,telefono,zona,tipo,descuento_default_pct,es_generico,activo")
     .eq("activo", true).order("tipo").order("nombre").limit(60);
   if (searchParams.solo === "socios") q = q.eq("tipo", "socio_icao");
   else if (searchParams.q) q = q.ilike("nombre", `%${searchParams.q}%`);
@@ -31,6 +31,10 @@ export default async function ClientesPage({
 
   const { count: totalSocios } = await db
     .from("clientes").select("id", { count: "exact", head: true }).eq("tipo", "socio_icao");
+
+  const { count: sinZona } = await db
+    .from("clientes").select("id", { count: "exact", head: true })
+    .eq("activo", true).eq("es_generico", false).is("zona", null);
 
   async function alternarSocio(fd: FormData) {
     "use server";
@@ -49,13 +53,30 @@ export default async function ClientesPage({
     revalidatePath("/clientes");
   }
 
+  // Zona de residencia: requisito legal. Los 460 clientes cargados no la traen,
+  // se completa poco a poco desde aquí o al dar de alta en caja.
+  async function guardarZona(fd: FormData) {
+    "use server";
+    const ses = leerSesion();
+    if (!puede(ses?.rol, "admin")) redirect("/turno?e=Sin permisos");
+    const { error } = await supabaseAdmin().rpc("actualizar_zona", {
+      p_cliente_id: Number(fd.get("id")), p_zona: String(fd.get("zona") ?? ""),
+    });
+    if (error) {
+      console.error("[clientes] actualizar_zona:", error.message);
+      redirect("/clientes?e=" + encodeURIComponent(error.message));
+    }
+    revalidatePath("/clientes");
+  }
+
   return (
     <main className="max-w-4xl mx-auto p-4 lg:p-6 space-y-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-black text-cafe-800">Clientes</h1>
           <p className="text-sm text-cafe-700">
-            <strong>{totalSocios ?? 0}</strong> socios ICAO ({PCT}% de descuento)
+            <strong>{totalSocios ?? 0}</strong> socios ICAO ({PCT}% de descuento) ·{" "}
+            <strong>{sinZona ?? 0}</strong> sin zona de residencia
           </p>
         </div>
         <Link href="/turno" className="btn-sec text-sm">Volver</Link>
@@ -92,17 +113,18 @@ export default async function ClientesPage({
         {clientes?.map((c) => {
           const esSocio = c.tipo === "socio_icao";
           return (
-            <div key={c.id} className="p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold truncate">
-                  {c.nombre}
-                  {c.es_generico && <span className="ml-2 text-xs text-cafe-700">(genérico)</span>}
-                </p>
-                <p className="text-xs text-cafe-700 truncate">
-                  {c.alumno ? `Alumna: ${c.alumno}` : c.telefono ?? "—"}
-                  {esSocio && ` · SOCIO ICAO ${c.descuento_default_pct}%`}
-                </p>
-              </div>
+            <div key={c.id} className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">
+                    {c.nombre}
+                    {c.es_generico && <span className="ml-2 text-xs text-cafe-700">(genérico)</span>}
+                  </p>
+                  <p className="text-xs text-cafe-700 truncate">
+                    {c.alumno ? `Alumna: ${c.alumno}` : c.telefono ?? "—"}
+                    {esSocio && ` · SOCIO ICAO ${c.descuento_default_pct}%`}
+                  </p>
+                </div>
               {!c.es_generico && (
                 <form action={alternarSocio}>
                   <input type="hidden" name="id" value={c.id} />
@@ -110,6 +132,16 @@ export default async function ClientesPage({
                   <button className={esSocio ? "btn-sec text-sm" : "btn-acc text-sm"}>
                     {esSocio ? "Quitar socio" : `Hacer socio ${PCT}%`}
                   </button>
+                </form>
+              )}
+              </div>
+
+              {!c.es_generico && (
+                <form action={guardarZona} className="flex gap-2 items-center">
+                  <input type="hidden" name="id" value={c.id} />
+                  <input name="zona" defaultValue={c.zona ?? ""} className="input flex-1"
+                         placeholder="Zona de residencia (requisito legal)" />
+                  <button className="btn-sec text-sm whitespace-nowrap">Guardar zona</button>
                 </form>
               )}
             </div>
