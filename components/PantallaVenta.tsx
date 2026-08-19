@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { METODOS, fmtEur, fmtBs, eur, convertir, type Metodo } from "@/lib/money";
+import { METODOS, METODOS_CAJA, fmtEur, fmtBs, eur, convertir, type Metodo } from "@/lib/money";
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
@@ -90,6 +90,7 @@ export default function PantallaVenta({
           </div>
           <div className="text-right text-xs text-cafe-700">
             <div>Tasa {turno.tasaEurBs.toFixed(2)} Bs/€</div>
+            <Link href="/cuentas" className="underline mr-3">Cuentas abiertas</Link>
             <Link href="/turno" className="underline">Turno</Link>
           </div>
         </header>
@@ -148,7 +149,7 @@ export default function PantallaVenta({
           </div>
           {pctAuto > 0 && (
             <div className="flex justify-between text-sm text-green-700">
-              <span>{cliente?.tipo === "staff" ? "Cortesía" : `Socio IMPETU −${pctAuto}%`}</span>
+              <span>{cliente?.tipo === "socio_icao" ? `Socio ICAO −${pctAuto}%` : `Descuento −${pctAuto}%`}</span>
               <span className="tabular-nums">−{fmtEur(subtotal * pctAuto / 100)}</span>
             </div>
           )}
@@ -309,8 +310,10 @@ function ModalCobro({
   onCerrar: () => void; onListo: (r: any) => void; onError: (m: string) => void;
 }) {
   const subtotal = eur(lineas.reduce((a, l) => a + l.precio_unit_eur * l.cant, 0));
+  // Solo se preselecciona descuento si el cliente ES socio ICAO.
+  // Un cliente normal arranca SIEMPRE en "Sin descuento".
   const [motivo, setMotivo] = useState<Motivo | null>(
-    cliente.descuento_default_pct > 0
+    cliente.tipo === "socio_icao" && cliente.descuento_default_pct > 0
       ? motivos.find((m) => m.autoriza === "auto") ?? null
       : null
   );
@@ -387,7 +390,7 @@ function ModalCobro({
         <div>
           <p className="label">Método de pago</p>
           <div className="grid grid-cols-2 gap-2">
-            {(Object.keys(METODOS) as Metodo[]).filter((m) => m !== "wallet").map((m) => (
+            {METODOS_CAJA.map((m) => (
               <button key={m} onClick={() => addPago(m)} className="btn-sec text-sm">{METODOS[m].label}</button>
             ))}
           </div>
