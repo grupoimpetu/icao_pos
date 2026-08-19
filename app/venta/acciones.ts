@@ -18,21 +18,21 @@ export async function buscarClientes(q: string) {
   return { ok: true as const, clientes: data ?? [] };
 }
 
-export async function crearCliente(f: { nombre: string; telefono?: string; alumno?: string; email?: string }) {
+export async function crearCliente(f: { nombre: string; telefono?: string; alumno?: string; email?: string; zona?: string }) {
   if (!leerSesion()) return { ok: false as const, error: "Sesión expirada" };
   if (!f.nombre?.trim()) return { ok: false as const, error: "El nombre es obligatorio" };
 
   const db = supabaseAdmin();
   const { data: id, error } = await db.rpc("crear_cliente", {
     p_nombre: f.nombre, p_telefono: f.telefono ?? null,
-    p_alumno: f.alumno ?? null, p_email: f.email ?? null,
+    p_alumno: f.alumno ?? null, p_email: f.email ?? null, p_zona: f.zona ?? null,
   });
   if (error) {
     console.error("[crearCliente]", error.message);
     return { ok: false as const, error: error.message };
   }
   const { data: cli } = await db
-    .from("clientes").select("id,nombre,alumno,telefono,tipo,descuento_default_pct")
+    .from("clientes").select("id,nombre,alumno,telefono,zona,tipo,descuento_default_pct")
     .eq("id", id).single();
   return { ok: true as const, cliente: cli };
 }
