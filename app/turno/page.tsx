@@ -149,10 +149,17 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
         <FormAbrirTurno accion={abrir} sugerida={sugerida} />
       )}
 
-      {puede(s.rol, "admin") && (
-        <Link href="/productos" className="block text-center text-sm text-cafe-700 underline">
-          Administrar catálogo
+      {turno && (
+        <Link href="/cuentas" className="block text-center text-sm text-cafe-700 underline">
+          Cuentas abiertas
         </Link>
+      )}
+
+      {puede(s.rol, "supervisor") && (
+        <div className="flex justify-center gap-6 text-sm text-cafe-700">
+          <Link href="/productos" className="underline">Catálogo</Link>
+          {puede(s.rol, "admin") && <Link href="/clientes" className="underline">Clientes y socios</Link>}
+        </div>
       )}
     </main>
   );
