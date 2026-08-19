@@ -14,12 +14,20 @@ export default function LoginPage({ searchParams }: { searchParams: { e?: string
     const ip = headers().get("x-forwarded-for")?.split(",")[0] ?? "local";
     const db = supabaseAdmin();
 
-    const { data: bloqueado } = await db.rpc("pin_bloqueado", { p_ip: ip });
+    const { data: bloqueado, error: eBloq } = await db.rpc("pin_bloqueado", { p_ip: ip });
+    if (eBloq) console.error("[login] pin_bloqueado:", eBloq.message);
     if (bloqueado) redirect("/login?e=" + encodeURIComponent("Demasiados intentos. Espera 10 minutos."));
 
-    const { data } = await db.rpc("verificar_pin", { p_pin: pin });
-    const emp = data?.[0];
+    const { data, error } = await db.rpc("verificar_pin", { p_pin: pin });
 
+    // Un fallo de base NO se puede mostrar como "PIN incorrecto": son problemas
+    // distintos y confundirlos hace imposible dar soporte en caja.
+    if (error) {
+      console.error("[login] verificar_pin:", error.message);
+      redirect("/login?e=" + encodeURIComponent("Error de conexión con la base. Avisa al administrador."));
+    }
+
+    const emp = data?.[0];
     await db.from("intentos_pin").insert({ ip, exitoso: !!emp });
     if (!emp) redirect("/login?e=" + encodeURIComponent("PIN incorrecto"));
 
