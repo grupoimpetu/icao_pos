@@ -180,3 +180,59 @@ export async function cobrarTicket(input: {
     },
   };
 }
+
+/* ================= Cobrar una cuenta que quedó abierta ================= */
+
+export async function cobrarCuentaAbierta(input: {
+  ticketId: number;
+  pagos: PagoEntrada[];
+}) {
+  const ses = leerSesion();
+  if (!ses) return { ok: false as const, error: "Sesión expirada" };
+
+  const db = supabaseAdmin();
+
+  const { data: t, error: eT } = await db
+    .from("tickets").select("id,correlativo,total_eur,estado,turno_id").eq("id", input.ticketId).single();
+  if (eT || !t) return { ok: false as const, error: "Ticket no encontrado" };
+  if (t.estado !== "abierto") return { ok: false as const, error: "Esa cuenta ya fue cobrada o anulada" };
+
+  const { data: turno } = await db
+    .from("turnos").select("tasa_eur_bs,tasa_eur_usd_cash,estado").eq("id", t.turno_id).single();
+  if (!turno || turno.estado !== "abierto")
+    return { ok: false as const, error: "El turno de esa cuenta ya cerró" };
+
+  const total = Number(t.total_eur);
+  let pagos;
+  try {
+    pagos = input.pagos.map((p) =>
+      construirPago(p.metodo, Number(turno.tasa_eur_bs), Number(turno.tasa_eur_usd_cash),
+                    { montoEur: p.montoEur }, p.referencia)
+    );
+  } catch (e: any) {
+    return { ok: false as const, error: e.message };
+  }
+  if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
+    return { ok: false as const, error: "Los pagos no suman el total" };
+
+  const { error: eP } = await db.from("pagos").insert(pagos.map((p) => ({ ...p, ticket_id: t.id })));
+  if (eP) {
+    console.error("[cobrarCuentaAbierta] pagos:", eP.message);
+    return { ok: false as const, error: "No se pudo registrar el pago" };
+  }
+
+  const { error: eU } = await db.from("tickets")
+    .update({ estado: "pagado", cerrado_ts: new Date().toISOString() })
+    .eq("id", t.id).eq("estado", "abierto");
+  if (eU) {
+    console.error("[cobrarCuentaAbierta] cierre:", eU.message);
+    return { ok: false as const, error: "El pago quedó registrado pero el ticket no se cerró. Avisa al supervisor." };
+  }
+
+  await db.from("audit_log").insert({
+    tabla: "tickets", registro_id: String(t.id), accion: "cobrar_cuenta_abierta",
+    valores_despues: { total_eur: total, pagos: pagos.length }, empleado_id: ses.empleadoId,
+  });
+
+  return { ok: true as const, correlativo: t.correlativo };
+}
