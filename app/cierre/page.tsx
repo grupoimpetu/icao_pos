@@ -40,9 +40,9 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
   const conceptos: Concepto[] = [];
 
   conceptos.push({
-    concepto: "Efectivo Bs (fondo)", metodo: null, moneda: "BS", tipo: "efectivo",
-    esperado: Number(turno.fondo_bs),
-    nota: "Fondo inicial. De aquí sale el vuelto, así que debe bajar durante el día.",
+    concepto: "Efectivo Bs", metodo: "efectivo_bs", moneda: "BS", tipo: "efectivo",
+    esperado: Number(turno.fondo_bs) + (porMetodo.get("efectivo_bs")?.monto ?? 0),
+    nota: "Fondo inicial + cobros en billetes de bolívares, menos el vuelto entregado.",
   });
   conceptos.push({
     concepto: "Efectivo USD", metodo: "efectivo_usd", moneda: "USD", tipo: "efectivo",
