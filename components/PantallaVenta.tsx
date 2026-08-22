@@ -7,6 +7,10 @@ import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
 type Cliente = { id: number; nombre: string; alumno?: string | null; telefono?: string | null; zona?: string | null; tipo: string; descuento_default_pct: number };
+/** ids fijos de motivos_descuento — anclar por id, NO por autoriza */
+const MOTIVO_SOCIO_ICAO = 5;
+const MOTIVO_DIVISAS = 2;
+
 type Motivo = { id: number; motivo: string; pct: number | null; autoriza: string };
 type Linea = { producto_id: number; nombre: string; precio_unit_eur: number; cant: number };
 
@@ -314,7 +318,7 @@ function ModalCobro({
   const subtotal = eur(lineas.reduce((a, l) => a + l.precio_unit_eur * l.cant, 0));
   // El 5% de socio ICAO va EMBEBIDO en la ficha del cliente: se aplica solo.
   // NO se ofrece como botón, para que nadie pueda regalárselo a quien quiera.
-  const motivoSocio = motivos.find((m) => m.autoriza === "auto") ?? null;
+  const motivoSocio = motivos.find((m) => m.id === MOTIVO_SOCIO_ICAO) ?? null;
   const motivosManuales = motivos.filter((m) => m.autoriza !== "auto");
   const esSocio = cliente.tipo === "socio_icao" && cliente.descuento_default_pct > 0;
   const [motivo, setMotivo] = useState<Motivo | null>(esSocio ? motivoSocio : null);
