@@ -325,12 +325,24 @@ function ModalCobro({
   const hayManual = !!motivo && motivo.autoriza !== "auto";
   const [pctLibre, setPctLibre] = useState(0);
   const [pin, setPin] = useState("");
+  const [porcion, setPorcion] = useState<"nada" | "todo" | "parte">("nada");
+  const [parteEur, setParteEur] = useState(0);
   const [pagos, setPagos] = useState<{ metodo: Metodo; montoEur: number; referencia: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
   const pct = motivo ? (motivo.pct ?? pctLibre) : 0;
-  const total = eur(subtotal * (1 - pct / 100));
+
+  // 5% divisas: REGLA automatica, no boton. Solo sobre la porcion declarada.
+  const pctDivisas = motivos.find((m) => m.id === MOTIVO_DIVISAS)?.pct ?? 0;
+  const declarado = eur(
+    porcion === "todo" ? subtotal
+    : porcion === "parte" ? Math.min(Math.max(0, parteEur), subtotal)
+    : 0
+  );
+  const baseDivisas = eur(declarado * (1 - pct / 100));
+  const descDivisas = eur(baseDivisas * (pctDivisas / 100));
+  const total = eur(subtotal * (1 - pct / 100) - descDivisas);
   const pagado = eur(pagos.reduce((a, p) => a + p.montoEur, 0));
   const falta = eur(total - pagado);
   const requierePin = !!motivo && ["supervisor", "admin"].includes(motivo.autoriza)
@@ -347,6 +359,7 @@ function ModalCobro({
       lineas: lineas.map((l) => ({ producto_id: l.producto_id, cant: l.cant, precio_unit_eur: l.precio_unit_eur })),
       pagos: dejarAbierto ? [] : pagos.map((p) => ({ metodo: p.metodo, montoEur: p.montoEur, referencia: p.referencia || undefined })),
       descuentoPct: pct, motivoDescuento: motivo?.motivo ?? null,
+      divisasDeclaradoEur: declarado,
       pinAutorizacion: pin || undefined, dejarAbierto,
     });
     if (r.ok) onListo(r.ticket); else setErr(r.error);
@@ -390,11 +403,38 @@ function ModalCobro({
           )}
         </div>
 
+        <div>
+          <p className="label">¿Cuánto paga en divisas? (USD · EUR · Zelle · Binance)</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([["nada","Nada"],["todo","Todo"],["parte","Parte"]] as const).map(([v,l]) => (
+              <button key={v} onClick={() => setPorcion(v)}
+                className={`btn text-base py-3 ${porcion === v ? "bg-cafe-800 text-white" : "bg-cafe-200"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          {porcion === "parte" && (
+            <input type="number" step="0.01" min={0} max={subtotal} className="input mt-2"
+              placeholder="€ del subtotal que paga en divisas"
+              value={parteEur || ""} onChange={(e) => setParteEur(Number(e.target.value))} />
+          )}
+          {declarado > 0 && (
+            <p className="mt-2 text-xs text-cafe-700">
+              Debe pagar {fmtEur(eur(baseDivisas - descDivisas))} en divisas. El resto, en bolívares.
+            </p>
+          )}
+        </div>
+
         <div className="rounded-xl bg-cafe-50 p-3">
           <div className="flex justify-between text-sm"><span>Subtotal</span><span>{fmtEur(subtotal)}</span></div>
           {pct > 0 && (
             <div className="flex justify-between text-sm text-green-700">
               <span>Descuento {pct}%</span><span>−{fmtEur(subtotal * pct / 100)}</span>
+            </div>
+          )}
+          {descDivisas > 0 && (
+            <div className="flex justify-between text-sm text-green-700">
+              <span>Pago en divisas −{pctDivisas}%</span><span>−{fmtEur(descDivisas)}</span>
             </div>
           )}
           <div className="flex justify-between text-2xl font-black"><span>Total</span><span>{fmtEur(total)}</span></div>
