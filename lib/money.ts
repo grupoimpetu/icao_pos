@@ -107,3 +107,32 @@ export function ticketCuadra(totalEur: number, pagosEur: number[]) {
 export const fmtEur = (n: number) => `€${eur(n).toFixed(2)}`;
 export const fmtBs  = (n: number) => `Bs ${Math.round(n).toLocaleString("es-VE")}`;
 export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
+
+
+/** ── Regla 5% divisas ──────────────────────────────────────────────
+ *  Divisa = todo método cuya moneda NO sea bolívares.
+ *  Efectivo USD · Efectivo EUR · Zelle · Binance · Wallet  → SÍ
+ *  Efectivo Bs · Pago Móvil · TDD · TDC                    → NO
+ *  Se deriva de METODOS: no mantener listas paralelas.
+ */
+export function esDivisa(metodo: Metodo): boolean {
+  return METODOS[metodo].moneda !== "BS";
+}
+
+/** Suma en EUR de los pagos hechos en divisa. */
+export function totalDivisasEur(
+  pagos: { metodo: Metodo; monto_eur: number }[]
+): number {
+  return eur(
+    pagos.filter((p) => esDivisa(p.metodo)).reduce((a, p) => a + p.monto_eur, 0)
+  );
+}
+
+/** ¿La porción declarada coincide con lo realmente pagado en divisa? */
+export function divisasCuadran(
+  declaradoEur: number,
+  pagos: { metodo: Metodo; monto_eur: number }[],
+  tolerancia = 0.01
+): boolean {
+  return Math.abs(totalDivisasEur(pagos) - eur(declaradoEur)) <= tolerancia;
+}
