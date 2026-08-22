@@ -5,5 +5,8 @@
   "display": "standalone",
   "background_color": "#FAF6F1",
   "theme_color": "#3B2314",
-  "icons": []
+  "icons": [
+    { "src": "/isotipo-icao.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+    { "src": "/isotipo-icao.png", "sizes": "any", "type": "image/png", "purpose": "maskable" }
+  ]
 }
