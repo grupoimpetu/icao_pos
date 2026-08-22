@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion } from "@/lib/session";
-import { construirPago, ticketCuadra, eur, type Metodo } from "@/lib/money";
+import { construirPago, ticketCuadra, eur, divisasCuadran, totalDivisasEur, type Metodo } from "@/lib/money";
 
 /* ================= Búsqueda y alta de clientes ================= */
 
@@ -48,6 +48,7 @@ export async function cobrarTicket(input: {
   lineas: LineaTicket[];
   pagos: PagoEntrada[];
   descuentoPct: number;
+  divisasDeclaradoEur?: number;
   motivoDescuento: string | null;
   pinAutorizacion?: string;
   dejarAbierto?: boolean;
@@ -107,12 +108,22 @@ export async function cobrarTicket(input: {
         return { ok: false as const, error: "PIN sin permisos para ese descuento" };
       motivo = `${m.motivo} (autorizó ${a.nombre})`;
     }
-    if (m.autoriza === "admin" && !input.motivoDescuento)
-      return { ok: false as const, error: "Ajuste comercial exige nota" };
   }
 
   const descuentoEur = eur(subtotal * (descuentoPct / 100));
-  const total = eur(subtotal - descuentoEur);
+
+  // --- 5% divisas: REGLA, no criterio. Sale de motivos_descuento id=2.
+  // Aplica solo sobre la porcion que el barista declaro que se paga en divisa.
+  const declarado = eur(Math.max(0, Number(input.divisasDeclaradoEur) || 0));
+  if (declarado > subtotal + 0.01)
+    return { ok: false as const, error: "La porcion en divisas supera el subtotal" };
+
+  const { data: mDiv } = await db
+    .from("motivos_descuento").select("pct").eq("id", 2).maybeSingle();
+  const pctDivisas = Number(mDiv?.pct ?? 0);
+  const descuentoDivisasEur = eur(declarado * (pctDivisas / 100));
+
+  const total = eur(subtotal - descuentoEur - descuentoDivisasEur);
 
   // --- Pagos: se reconstruyen en el servidor con construirPago() ---
   let pagos: ReturnType<typeof construirPago>[] = [];
@@ -124,6 +135,8 @@ export async function cobrarTicket(input: {
     } catch (e: any) {
       return { ok: false as const, error: e.message };
     }
+    if (!divisasCuadran(declarado - descuentoDivisasEur, pagos))
+      return { ok: false as const, error: `Declaraste ${declarado.toFixed(2)} EUR en divisas pero se pagaron ${totalDivisasEur(pagos).toFixed(2)}` };
     if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
       return { ok: false as const, error: "Los pagos no suman el total del ticket" };
   }
@@ -139,6 +152,7 @@ export async function cobrarTicket(input: {
       estado: input.dejarAbierto ? "abierto" : "pagado",
       cerrado_ts: input.dejarAbierto ? null : new Date().toISOString(),
       subtotal_eur: subtotal, descuento_eur: descuentoEur,
+      divisas_declarado_eur: declarado, descuento_divisas_eur: descuentoDivisasEur,
       motivo_descuento: motivo, total_eur: total,
     }).select().single();
   if (eTicket || !ticket) {
