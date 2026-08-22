@@ -25,7 +25,7 @@ export const METODOS: Record<Metodo, DefMetodo> = {
   tdd:              { label: "TDD (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   tdc:              { label: "TDC (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   efectivo_usd:     { label: "Efectivo USD",   moneda: "USD", refObligatoria: false, redondeo: "cash",   enCaja: true  },
-  efectivo_eur:     { label: "Efectivo EUR",   moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: true  },
+  efectivo_eur:     { label: "Efectivo EUR",   moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },  // en VE el efectivo entra en USD; se conserva por histórico
   zelle:            { label: "Zelle ($)",      moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
   binance:          { label: "Binance (USDT)", moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
   wallet:           { label: "Wallet ICAO",    moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },
