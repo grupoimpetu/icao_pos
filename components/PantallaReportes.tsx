@@ -95,33 +95,37 @@ export default function PantallaReportes() {
       )}
 
       {/* ---- Por día ---- */}
-      {!!d?.porDia?.length && (
+      {d && (
         <Bloque titulo="Por día"
           onCsv={() => descargarCsv(`icao_dias_${desde}_${hasta}.csv`,
             [["Día", "Tickets", "Neto EUR", "Descuentos EUR"],
              ...d.porDia.map((r: any) => [r.dia, r.tickets, r.neto_eur, r.desc_total_eur])])}>
-          <Tabla cab={["Día", "Tickets", "Neto", "Descuentos"]}
-            filas={d.porDia.map((r: any) => [r.dia, r.tickets, fmtEur(r.neto_eur), fmtEur(r.desc_total_eur)])} />
+          {!d.porDia.length
+            ? <p className="text-sm text-cafe-700">Sin ventas en el rango.</p>
+            : <Tabla cab={["Día", "Tickets", "Neto", "Descuentos"]}
+                filas={d.porDia.map((r: any) => [r.dia, r.tickets, fmtEur(r.neto_eur), fmtEur(r.desc_total_eur)])} />}
         </Bloque>
       )}
 
       {/* ---- Métodos ---- */}
-      {!!d?.metodos?.length && (
+      {d && (
         <Bloque titulo="Por método de pago"
           onCsv={() => descargarCsv(`icao_metodos_${desde}_${hasta}.csv`,
             [["Método", "Moneda", "Operaciones", "Total EUR", "Total moneda"],
              ...d.metodos.map((r: any) => [METODOS[r.metodo as Metodo]?.label ?? r.metodo, r.moneda, r.n, r.total_eur, r.total_moneda])])}>
-          <Tabla cab={["Método", "Ops", "Total €", "En su moneda"]}
+          {!d.metodos.length
+            ? <p className="text-sm text-cafe-700">Sin cobros en el rango.</p>
+            : <Tabla cab={["Método", "Ops", "Total €", "En su moneda"]}
             filas={d.metodos.map((r: any) => [
               METODOS[r.metodo as Metodo]?.label ?? r.metodo, r.n, fmtEur(r.total_eur),
               r.moneda === "BS" ? fmtBs(r.total_moneda) : r.moneda === "USD" ? `$${Number(r.total_moneda).toFixed(2)}` : fmtEur(r.total_moneda),
-            ])} />
+            ])} />}
         </Bloque>
       )}
 
       {/* ---- Descuentos ---- */}
       <Bloque titulo="Descuentos aplicados"
-        onCsv={d?.descuentos?.length ? () => descargarCsv(`icao_descuentos_${desde}_${hasta}.csv`,
+        onCsv={d ? () => descargarCsv(`icao_descuentos_${desde}_${hasta}.csv`,
           [["Ticket", "Fecha", "Cliente", "Motivo", "Descuento EUR", "Total EUR"],
            ...d.descuentos.map((r: any) => [r.correlativo, r.ts, r.cliente, r.motivo, r.descuento_eur, r.total_eur])]) : undefined}>
         {!d?.descuentos?.length
