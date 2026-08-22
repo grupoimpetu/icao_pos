@@ -228,7 +228,7 @@ function ReporteZ({ z, onCerrar }: { z: any; onCerrar: () => void }) {
         </div>
 
         <div className="text-center border-b border-cafe-200 pb-3">
-          <p className="font-black text-cafe-800">ICAO Buencafé</p>
+          <img src="/logo-icao.png" alt="ICAO Buencafé" className="mx-auto h-10 w-auto" />
           <p className="text-xs text-cafe-700">Paseo El Hatillo</p>
           <p className="mt-1 text-sm font-bold">Cierre de turno {c?.turno_id}</p>
           <p className="text-xs text-cafe-700">
