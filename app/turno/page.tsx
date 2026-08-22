@@ -61,9 +61,12 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
   return (
     <main className="max-w-2xl mx-auto p-6 space-y-6">
       <header className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-cafe-700">{s.rol}</p>
-          <h1 className="text-2xl font-black text-cafe-800">{s.nombre}</h1>
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/isotipo-icao.png" alt="" aria-hidden className="h-10 w-10 shrink-0 object-contain" />
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-cafe-700">{s.rol}</p>
+            <h1 className="text-2xl font-black text-cafe-800 truncate">{s.nombre}</h1>
+          </div>
         </div>
         <form action={salir}><button className="btn-sec text-sm">Salir</button></form>
       </header>
