@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: "ICAO POS",
   description: "Punto de venta ICAO Buencafé — Paseo El Hatillo",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/isotipo-icao.png",
+    shortcut: "/isotipo-icao.png",
+    apple: "/isotipo-icao.png",
+  },
 };
 
 export const viewport: Viewport = {
