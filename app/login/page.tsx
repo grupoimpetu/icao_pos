@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { headers } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase";
 import { crearSesion, leerSesion } from "@/lib/session";
@@ -39,8 +40,12 @@ export default function LoginPage({ searchParams }: { searchParams: { e?: string
     <main className="min-h-screen grid place-items-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-black tracking-tight text-cafe-800">ICAO</h1>
-          <p className="text-sm text-cafe-700">Paseo El Hatillo · Punto de venta</p>
+          <Image
+            src="/logo-icao.png" alt="ICAO Buencafé"
+            width={240} height={108} priority
+            className="mx-auto w-48 h-auto"
+          />
+          <p className="mt-3 text-sm text-cafe-700">Paseo El Hatillo · Punto de venta</p>
         </div>
         {searchParams.e && (
           <p className="mb-4 text-center text-sm font-semibold text-red-600">{searchParams.e}</p>
