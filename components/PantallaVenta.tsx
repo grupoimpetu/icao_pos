@@ -88,9 +88,12 @@ export default function PantallaVenta({
       {/* ---------- IZQUIERDA: catálogo ---------- */}
       <section className="flex-1 min-w-0 p-4 lg:p-6 space-y-4">
         <header className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-cafe-700">{empleado.rol}</p>
-            <h1 className="text-xl font-black text-cafe-800">{empleado.nombre}</h1>
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/isotipo-icao.png" alt="" aria-hidden className="h-9 w-9 shrink-0 object-contain" />
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-cafe-700">{empleado.rol}</p>
+              <h1 className="text-xl font-black text-cafe-800 truncate">{empleado.nombre}</h1>
+            </div>
           </div>
           <div className="text-right text-xs text-cafe-700">
             <div>Tasa {turno.tasaEurBs.toFixed(2)} Bs/€</div>
@@ -515,6 +518,7 @@ function Recibo({ r, onNuevo }: { r: any; onNuevo: () => void }) {
   return (
     <main className="min-h-screen grid place-items-center p-6">
       <div className="card p-6 w-full max-w-sm space-y-4 text-center">
+        <img src="/logo-icao.png" alt="ICAO Buencafé" className="mx-auto h-9 w-auto" />
         <p className={`text-4xl ${r.abierto ? "" : "text-green-600"}`}>{r.abierto ? "⏳" : "✓"}</p>
         <h1 className="text-xl font-black">{r.abierto ? "Cuenta abierta" : "Cobrado"}</h1>
         <p className="text-sm text-cafe-700">{r.correlativo} · {r.cliente}</p>
