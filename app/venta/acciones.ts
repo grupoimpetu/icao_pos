@@ -121,7 +121,9 @@ export async function cobrarTicket(input: {
   const { data: mDiv } = await db
     .from("motivos_descuento").select("pct").eq("id", 2).maybeSingle();
   const pctDivisas = Number(mDiv?.pct ?? 0);
-  const descuentoDivisasEur = eur(declarado * (pctDivisas / 100));
+  // el 5% se calcula sobre la porcion YA descontada, no sobre el bruto
+  const baseDivisas = eur(declarado * (1 - descuentoPct / 100));
+  const descuentoDivisasEur = eur(baseDivisas * (pctDivisas / 100));
 
   const total = eur(subtotal - descuentoEur - descuentoDivisasEur);
 
@@ -135,7 +137,7 @@ export async function cobrarTicket(input: {
     } catch (e: any) {
       return { ok: false as const, error: e.message };
     }
-    if (!divisasCuadran(declarado - descuentoDivisasEur, pagos))
+    if (!divisasCuadran(baseDivisas - descuentoDivisasEur, pagos))
       return { ok: false as const, error: `Declaraste ${declarado.toFixed(2)} EUR en divisas pero se pagaron ${totalDivisasEur(pagos).toFixed(2)}` };
     if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
       return { ok: false as const, error: "Los pagos no suman el total del ticket" };
