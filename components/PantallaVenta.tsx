@@ -420,7 +420,8 @@ function ModalCobro({
           )}
           {declarado > 0 && (
             <p className="mt-2 text-xs text-cafe-700">
-              Debe pagar {fmtEur(eur(baseDivisas - descDivisas))} en divisas. El resto, en bolívares.
+              Debe pagar <strong>{fmtEur(eur(baseDivisas - descDivisas))} / ${(eur(baseDivisas - descDivisas) / turno.tasaEurUsd).toFixed(2)}</strong> en divisas.
+              El resto, en bolívares.
             </p>
           )}
         </div>
