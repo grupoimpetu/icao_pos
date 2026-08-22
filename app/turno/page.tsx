@@ -150,6 +150,10 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
             className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
             Dashboard
           </Link>
+          <Link href="/reportes"
+            className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+            Reportes
+          </Link>
           {puede(s.rol, "admin") && (
             <Link href="/clientes"
               className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
