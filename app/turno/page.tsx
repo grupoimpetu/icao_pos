@@ -141,10 +141,27 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
       )}
 
       {puede(s.rol, "supervisor") && (
-        <div className="flex justify-center gap-6 text-sm text-cafe-700">
-          <Link href="/productos" className="underline">Catálogo</Link>
-          <Link href="/dashboard" className="underline">Dashboard</Link>
-          {puede(s.rol, "admin") && <Link href="/clientes" className="underline">Clientes y socios</Link>}
+        <div className="grid grid-cols-2 gap-3">
+          <Link href="/productos"
+            className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+            Catálogo
+          </Link>
+          <Link href="/dashboard"
+            className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+            Dashboard
+          </Link>
+          {puede(s.rol, "admin") && (
+            <Link href="/clientes"
+              className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+              Clientes y socios
+            </Link>
+          )}
+          {puede(s.rol, "admin") && (
+            <Link href="/config"
+              className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+              Parámetros
+            </Link>
+          )}
         </div>
       )}
     </main>
