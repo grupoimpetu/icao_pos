@@ -11,8 +11,9 @@ export type DeclaracionEntrada = {
 export async function cerrarCaja(input: { turnoId: number; declaraciones: DeclaracionEntrada[] }) {
   const ses = leerSesion();
   if (!ses) return { ok: false as const, error: "Sesión expirada" };
-  if (!puede(ses.rol, "supervisor"))
-    return { ok: false as const, error: "Solo supervisor o admin cierran caja" };
+  // Barista habilitado para cerrar caja (decisión owner 29-ago).
+  if (!puede(ses.rol, "barista"))
+    return { ok: false as const, error: "Necesitas iniciar sesión para cerrar caja" };
 
   const db = supabaseAdmin();
 

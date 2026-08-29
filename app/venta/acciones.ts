@@ -137,8 +137,16 @@ export async function cobrarTicket(input: {
     } catch (e: any) {
       return { ok: false as const, error: e.message };
     }
-    if (!divisasCuadran(baseDivisas - descuentoDivisasEur, pagos))
-      return { ok: false as const, error: `Declaraste ${declarado.toFixed(2)} EUR en divisas pero se pagaron ${totalDivisasEur(pagos).toFixed(2)}` };
+    // El cliente ENTREGA en divisa la porción declarada (ya neta del descuento
+    // manual). El 5% divisa vive dentro del total, NO se descuenta de lo que
+    // entrega en dólares; el resto va en bolívares. Si declaró más divisa que
+    // el total (o "Todo"), se cobra el total en divisa: min(baseDivisas, total).
+    const divisaObjetivo = eur(Math.min(baseDivisas, total));
+    if (!divisasCuadran(divisaObjetivo, pagos)) {
+      const objetivoUsd = eur(divisaObjetivo / tasaUsd).toFixed(2);
+      const pagadoUsd = eur(totalDivisasEur(pagos) / tasaUsd).toFixed(2);
+      return { ok: false as const, error: `En divisa debías cobrar $${objetivoUsd} pero se registraron $${pagadoUsd}` };
+    }
     if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
       return { ok: false as const, error: "Los pagos no suman el total del ticket" };
   }

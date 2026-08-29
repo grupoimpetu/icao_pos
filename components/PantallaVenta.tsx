@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { METODOS, METODOS_CAJA, fmtEur, fmtBs, eur, convertir, type Metodo } from "@/lib/money";
+import { METODOS, METODOS_CAJA, fmtEur, fmtBs, fmtUsd, eur, convertir, esDivisa, type Metodo } from "@/lib/money";
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
@@ -346,8 +346,17 @@ function ModalCobro({
   const baseDivisas = eur(declarado * (1 - pct / 100));
   const descDivisas = eur(baseDivisas * (pctDivisas / 100));
   const total = eur(subtotal * (1 - pct / 100) - descDivisas);
+  // El precio ancla en EUR es solo referencia: en la práctica se recibe USD 1:1.
+  // El cliente ENTREGA en divisa exactamente lo declarado (divisaObjetivo); el
+  // 5% de descuento ya está dentro del total, así que el resto va en bolívares.
+  // Lo que el cliente ENTREGA en divisa. Si declaró más divisa que el total
+  // (o eligió "Todo"), se cobra el total en divisa y no queda nada en Bs.
+  const divisaObjetivo = eur(Math.min(baseDivisas, total));
+  const bsObjetivo = eur(total - divisaObjetivo);     // el resto, en bolívares
   const pagado = eur(pagos.reduce((a, p) => a + p.montoEur, 0));
   const falta = eur(total - pagado);
+  const pagadoDivisas = eur(pagos.filter((p) => esDivisa(p.metodo)).reduce((a, p) => a + p.montoEur, 0));
+  const divisaCuadra = Math.abs(pagadoDivisas - divisaObjetivo) <= 0.01;
   const requierePin = !!motivo && ["supervisor", "admin"].includes(motivo.autoriza)
     && !["supervisor", "admin"].includes(rolEmpleado);
 
@@ -423,8 +432,9 @@ function ModalCobro({
           )}
           {declarado > 0 && (
             <p className="mt-2 text-xs text-cafe-700">
-              Debe pagar <strong>{fmtEur(eur(baseDivisas - descDivisas))} / ${(eur(baseDivisas - descDivisas) / turno.tasaEurUsd).toFixed(2)}</strong> en divisas.
-              El resto, en bolívares.
+              Cobra <strong>{fmtUsd(eur(divisaObjetivo / turno.tasaEurUsd))}</strong> en divisa
+              {bsObjetivo > 0.01 && <> + <strong>{fmtBs(Math.ceil(bsObjetivo * turno.tasaEurBs))}</strong> en bolívares</>}.
+              {descDivisas > 0 && <span className="text-green-700"> (5% divisa ya aplicado)</span>}
             </p>
           )}
         </div>
@@ -480,15 +490,22 @@ function ModalCobro({
         })}
 
         {!!pagos.length && (
-          <p className={`text-sm font-bold ${Math.abs(falta) <= 0.01 ? "text-green-700" : "text-cafe-800"}`}>
-            {Math.abs(falta) <= 0.01 ? "Cuadra ✓" : falta > 0 ? `Falta ${fmtEur(falta)}` : `Sobra ${fmtEur(-falta)}`}
-          </p>
+          <div className="text-sm font-bold space-y-0.5">
+            <p className={Math.abs(falta) <= 0.01 ? "text-green-700" : "text-cafe-800"}>
+              {Math.abs(falta) <= 0.01 ? "Cuadra ✓" : falta > 0 ? `Falta ${fmtEur(falta)}` : `Sobra ${fmtEur(-falta)}`}
+            </p>
+            {declarado > 0 && !divisaCuadra && (
+              <p className="text-red-600">
+                En divisa debes cobrar {fmtUsd(eur(divisaObjetivo / turno.tasaEurUsd))} y llevas {fmtUsd(eur(pagadoDivisas / turno.tasaEurUsd))}.
+              </p>
+            )}
+          </div>
         )}
 
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || Math.abs(falta) > 0.01}
+          disabled={pend || !pagos.length || Math.abs(falta) > 0.01 || (declarado > 0 && !divisaCuadra)}
           onClick={() => start(() => ejecutar(false))}>
           {pend ? "Procesando…" : `Confirmar ${fmtEur(total)}`}
         </button>

@@ -15,7 +15,9 @@ export type Concepto = {
 export default async function CierrePage({ searchParams }: { searchParams: { e?: string } }) {
   const s = leerSesion();
   if (!s) redirect("/login");
-  if (!puede(s.rol, "supervisor")) redirect("/turno?e=Solo supervisor o admin cierran caja");
+  // El barista también cierra caja (decisión owner 29-ago): poco práctico exigir
+  // supervisor en cada cierre. Cualquier empleado con sesión válida puede cerrar.
+  if (!puede(s.rol, "barista")) redirect("/turno?e=Necesitas iniciar sesión para cerrar caja");
 
   const db = supabaseAdmin();
   const { data: turno } = await db.from("turnos").select("*").eq("estado", "abierto").maybeSingle();
@@ -101,6 +103,9 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
         conceptos={conceptos}
         totalEur={Math.round(totalEur * 100) / 100}
         hayAbiertos={!!abiertos}
+        empleado={s.nombre}
+        aperturaTs={turno.apertura_ts}
+        tasaBs={Number(turno.tasa_eur_bs)}
       />
     </main>
   );
