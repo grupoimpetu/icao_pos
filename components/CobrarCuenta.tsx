@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { METODOS, METODOS_CAJA, fmtEur, fmtBs, eur, convertir, type Metodo } from "@/lib/money";
+import { fmtEur, fmtBs, eur, type Metodo } from "@/lib/money";
+import LineasPago, { sumaEur, type LineaPago } from "@/components/LineasPago";
 import { cobrarCuentaAbierta } from "@/app/venta/acciones";
 
 export default function CobrarCuenta({
@@ -12,12 +13,12 @@ export default function CobrarCuenta({
   totalEur: number; tasaEurBs: number; tasaEurUsd: number;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const [pagos, setPagos] = useState<{ metodo: Metodo; montoEur: number; referencia: string }[]>([]);
+  const [pagos, setPagos] = useState<LineaPago[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
   const router = useRouter();
 
-  const pagado = eur(pagos.reduce((a, p) => a + p.montoEur, 0));
+  const pagado = sumaEur(pagos, tasaEurBs, tasaEurUsd);
   const falta = eur(totalEur - pagado);
 
   if (!abierto) {
@@ -37,61 +38,35 @@ export default function CobrarCuenta({
 
         <div className="rounded-xl bg-cafe-50 p-3">
           <div className="flex justify-between text-2xl font-black"><span>Total</span><span>{fmtEur(totalEur)}</span></div>
-          <p className="text-right text-sm text-cafe-700">{fmtBs(Math.ceil(totalEur * tasaEurBs))}</p>
+          <p className="text-right text-sm text-cafe-700">{fmtBs(Math.round(totalEur * tasaEurBs * 100) / 100)}</p>
         </div>
 
-        <div>
-          <p className="label">Método de pago</p>
-          <div className="grid grid-cols-2 gap-2">
-            {METODOS_CAJA.map((m) => (
-              <button key={m} className="btn-sec text-sm"
-                onClick={() => setPagos((ps) => [...ps, { metodo: m, montoEur: Math.max(0, falta), referencia: "" }])}>
-                {METODOS[m].label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {pagos.map((p, i) => {
-          const conv = convertir(p.montoEur, p.metodo, tasaEurBs, tasaEurUsd);
-          return (
-            <div key={i} className="border border-cafe-200 rounded-xl p-3 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-sm">{METODOS[p.metodo].label}</span>
-                <button className="text-xs underline text-red-600"
-                  onClick={() => setPagos((ps) => ps.filter((_, j) => j !== i))}>Quitar</button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-cafe-700">€</span>
-                <input type="number" step="0.01" className="input" value={p.montoEur}
-                  onChange={(e) => setPagos((ps) => ps.map((x, j) => j === i ? { ...x, montoEur: Number(e.target.value) } : x))} />
-                <span className="text-sm font-bold whitespace-nowrap">
-                  {conv.moneda === "BS" ? fmtBs(conv.monto) : conv.moneda === "USD" ? `$${conv.monto.toFixed(2)}` : fmtEur(conv.monto)}
-                </span>
-              </div>
-              {METODOS[p.metodo].refObligatoria && (
-                <input className="input" placeholder="Referencia (obligatorio)" value={p.referencia}
-                  onChange={(e) => setPagos((ps) => ps.map((x, j) => j === i ? { ...x, referencia: e.target.value } : x))} />
-              )}
-            </div>
-          );
-        })}
+        <LineasPago
+          pagos={pagos} setPagos={setPagos}
+          tasaEurBs={tasaEurBs} tasaEurUsd={tasaEurUsd} faltaEur={falta}
+        />
 
         {!!pagos.length && (
-          <p className={`text-sm font-bold ${Math.abs(falta) <= 0.01 ? "text-green-700" : "text-cafe-800"}`}>
-            {Math.abs(falta) <= 0.01 ? "Cuadra ✓" : falta > 0 ? `Falta ${fmtEur(falta)}` : `Sobra ${fmtEur(-falta)}`}
+          <p className={`text-sm font-bold ${falta <= 0.01 ? "text-green-700" : "text-cafe-800"}`}>
+            {Math.abs(falta) <= 0.01
+              ? "Cuadra ✓"
+              : falta > 0
+                ? `Falta ${fmtEur(falta)}`
+                : -falta > 5
+                  ? `Excedente muy alto (${fmtEur(-falta)}). Revisa los montos.`
+                  : `Cuadra ✓ · paga ${fmtEur(-falta)} de más (se registra como excedente)`}
           </p>
         )}
 
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || Math.abs(falta) > 0.01}
+          disabled={pend || !pagos.length || falta > 0.01 || -falta > 5}
           onClick={() => start(async () => {
             setErr(null);
             const r = await cobrarCuentaAbierta({
               ticketId,
-              pagos: pagos.map((p) => ({ metodo: p.metodo, montoEur: p.montoEur, referencia: p.referencia || undefined })),
+              pagos: pagos.map((p) => ({ metodo: p.metodo, montoOriginal: p.montoOriginal, referencia: p.referencia || undefined })),
             });
             if (r.ok) { setAbierto(false); router.refresh(); } else setErr(r.error);
           })}>

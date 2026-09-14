@@ -3,7 +3,7 @@ import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion, cerrarSesion, puede } from "@/lib/session";
 import { obtenerTasaBcv } from "@/lib/tasa";
-import { fmtBs, fmtEur } from "@/lib/money";
+import { fmtBs, fmtEur, aBs } from "@/lib/money";
 import FormAbrirTurno from "@/components/FormAbrirTurno";
 
 export const dynamic = "force-dynamic";
@@ -142,7 +142,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
 
             <p className="text-xs text-cafe-700">
               Referencia: 1 café de {fmtEur(3.82)} ={" "}
-              {fmtBs(Math.ceil(3.82 * Number(turno.tasa_eur_bs)))}
+              {fmtBs(aBs(3.82, Number(turno.tasa_eur_bs)))}
             </p>
           </section>
 

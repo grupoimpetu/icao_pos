@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion } from "@/lib/session";
-import { construirPago, ticketCuadra, eur, totalDivisasEur, type Metodo } from "@/lib/money";
+import { construirPago, eur, totalDivisasEur, type Metodo } from "@/lib/money";
 
 /* ================= Búsqueda y alta de clientes ================= */
 
@@ -39,8 +39,14 @@ export async function crearCliente(f: { nombre: string; telefono?: string; alumn
 
 /* ================= Cobro ================= */
 
+/** Tope de excedente por ticket. Sobre esto no es "billete redondo", es un
+ *  error de tecleo y hay que frenarlo antes de que ensucie la caja. */
+const TOPE_EXCEDENTE_EUR = 5;
+
 export type LineaTicket = { producto_id: number; cant: number; precio_unit_eur: number };
-export type PagoEntrada = { metodo: Metodo; montoEur: number; referencia?: string };
+/** CAMBIO 14-sep-2026: el barista teclea en la MONEDA DEL MÉTODO (Bs o $),
+ *  no en EUR. El EUR es ancla de precios, no es plata que se mueve. */
+export type PagoEntrada = { metodo: Metodo; montoOriginal: number; referencia?: string };
 
 export async function cobrarTicket(input: {
   turnoId: number;
@@ -128,7 +134,7 @@ export async function cobrarTicket(input: {
   if (!input.dejarAbierto) {
     try {
       pagos = input.pagos.map((p) =>
-        construirPago(p.metodo, tasaBs, tasaUsd, { montoEur: p.montoEur }, p.referencia)
+        construirPago(p.metodo, tasaBs, tasaUsd, { montoOriginal: p.montoOriginal }, p.referencia)
       );
     } catch (e: any) {
       return { ok: false as const, error: e.message };
@@ -137,26 +143,34 @@ export async function cobrarTicket(input: {
       return { ok: false as const, error: "Hay una linea de pago en cero. Quitala o ponle monto." };
   }
 
-  // Lo efectivamente entregado en divisa (neto, ya con el descuento manual
-  // aplicado porque el barista cobra sobre el total con descuento).
-  const baseDivisas = eur(totalDivisasEur(pagos));
+  // Lo efectivamente entregado en divisa. Se topa al subtotal neto: si el
+  // cliente paga de más (billete redondo), el excedente NO genera descuento.
+  const baseDivisas = eur(Math.min(totalDivisasEur(pagos), subtotal - descuentoEur));
   const descuentoDivisasEur = eur(baseDivisas * (pctDivisas / 100));
   // Para el ticket abierto todavia no hay pagos: se guarda 0 y se recalcula al cobrar.
   const declarado = input.dejarAbierto ? 0 : eur(baseDivisas / (1 - descuentoPct / 100 || 1));
 
   const total = eur(subtotal - descuentoEur - descuentoDivisasEur);
 
+  //  EXCEDENTE (14-sep-2026): en la barra el cliente suele pagar con billete
+  //  redondo ($2 por un ticket de $1.96) y se le cobra completo. Antes el POS
+  //  exigia suma == total, asi que se registraba menos de lo que entraba y el
+  //  Reporte Z mostraba una sobra fantasma todos los dias. Ahora se registra
+  //  LO QUE ENTRO DE VERDAD: el sobrante se guarda en `excedente_eur` y la
+  //  gaveta cuadra en cero. Lo que NO se acepta es cobrar de menos.
+  let excedenteEur = 0;
   if (!input.dejarAbierto) {
-    if (!ticketCuadra(total, pagos.map((p) => p.monto_eur))) {
-      const suma = eur(pagos.reduce((a, p) => a + p.monto_eur, 0));
-      const dif = eur(total - suma);
+    const suma = eur(pagos.reduce((a, p) => a + p.monto_eur, 0));
+    const dif = eur(total - suma);
+    if (dif > 0.01)
+      return { ok: false as const, error: `Faltan ${dif.toFixed(2)} para completar el total (${total.toFixed(2)})` };
+
+    excedenteEur = eur(Math.max(0, -dif));
+    if (excedenteEur > TOPE_EXCEDENTE_EUR)
       return {
         ok: false as const,
-        error: dif > 0
-          ? `Faltan ${dif.toFixed(2)} para completar el total (${total.toFixed(2)})`
-          : `Sobran ${(-dif).toFixed(2)} sobre el total (${total.toFixed(2)})`,
+        error: `El excedente (${excedenteEur.toFixed(2)}) supera el tope de ${TOPE_EXCEDENTE_EUR.toFixed(2)}. Revisa los montos: parece un error de tecleo.`,
       };
-    }
   }
 
   // --- Correlativo por turno: T{turno}-{n} ---
@@ -171,6 +185,7 @@ export async function cobrarTicket(input: {
       cerrado_ts: input.dejarAbierto ? null : new Date().toISOString(),
       subtotal_eur: subtotal, descuento_eur: descuentoEur,
       divisas_declarado_eur: declarado, descuento_divisas_eur: descuentoDivisasEur,
+      excedente_eur: excedenteEur,
       motivo_descuento: motivo, total_eur: total,
     }).select().single();
   if (eTicket || !ticket) {
@@ -202,7 +217,7 @@ export async function cobrarTicket(input: {
   return {
     ok: true as const,
     ticket: {
-      id: ticket.id, correlativo, subtotal, descuentoEur, total,
+      id: ticket.id, correlativo, subtotal, descuentoEur, total, excedenteEur,
       abierto: !!input.dejarAbierto,
       cliente: cli?.nombre ?? "", telefono: cli?.telefono ?? null,
       tasaBs, lineas: input.lineas.map((l) => ({
@@ -239,13 +254,18 @@ export async function cobrarCuentaAbierta(input: {
   try {
     pagos = input.pagos.map((p) =>
       construirPago(p.metodo, Number(turno.tasa_eur_bs), Number(turno.tasa_eur_usd_cash),
-                    { montoEur: p.montoEur }, p.referencia)
+                    { montoOriginal: p.montoOriginal }, p.referencia)
     );
   } catch (e: any) {
     return { ok: false as const, error: e.message };
   }
-  if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
-    return { ok: false as const, error: "Los pagos no suman el total" };
+  const sumaCA = pagos.reduce((a, p) => a + p.monto_eur, 0);
+  const difCA = Number((total - sumaCA).toFixed(2));
+  if (difCA > 0.01)
+    return { ok: false as const, error: `Faltan ${difCA.toFixed(2)} para completar el total` };
+  const excedenteCA = Math.max(0, Number((-difCA).toFixed(2)));
+  if (excedenteCA > TOPE_EXCEDENTE_EUR)
+    return { ok: false as const, error: `El excedente (${excedenteCA.toFixed(2)}) supera el tope de ${TOPE_EXCEDENTE_EUR.toFixed(2)}.` };
 
   const { error: eP } = await db.from("pagos").insert(pagos.map((p) => ({ ...p, ticket_id: t.id })));
   if (eP) {
@@ -254,7 +274,7 @@ export async function cobrarCuentaAbierta(input: {
   }
 
   const { error: eU } = await db.from("tickets")
-    .update({ estado: "pagado", cerrado_ts: new Date().toISOString() })
+    .update({ estado: "pagado", cerrado_ts: new Date().toISOString(), excedente_eur: excedenteCA })
     .eq("id", t.id).eq("estado", "abierto");
   if (eU) {
     console.error("[cobrarCuentaAbierta] cierre:", eU.message);

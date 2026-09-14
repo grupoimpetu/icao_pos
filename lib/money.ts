@@ -24,7 +24,7 @@ export const METODOS: Record<Metodo, DefMetodo> = {
   bs_pago_movil:    { label: "Bs Pago Móvil",  moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   tdd:              { label: "TDD (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
   tdc:              { label: "TDC (punto)",    moneda: "BS",  refObligatoria: true,  redondeo: "bs",     enCaja: true  },
-  efectivo_usd:     { label: "Efectivo USD",   moneda: "USD", refObligatoria: false, redondeo: "cash",   enCaja: true  },
+  efectivo_usd:     { label: "Efectivo USD",   moneda: "USD", refObligatoria: false, redondeo: "exacto", enCaja: true  },
   efectivo_eur:     { label: "Efectivo EUR",   moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },  // en VE el efectivo entra en USD; se conserva por histórico
   zelle:            { label: "Zelle ($)",      moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
   binance:          { label: "Binance (USDT)", moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
@@ -38,12 +38,16 @@ export const METODOS_CAJA = (Object.keys(METODOS) as Metodo[]).filter((m) => MET
 
 export const eur = (n: number) => Math.round(n * 100) / 100;
 
-/** Bs: unidad entera hacia arriba (el vuelto se da en Bs). */
-export const aBs = (montoEur: number, tasaEurBs: number) => Math.ceil(eur(montoEur) * tasaEurBs);
+/** Bs CON CÉNTIMOS (14-sep-2026). Antes era `ceil` a bolívar entero: eso
+ *  inflaba cada cobro y no cuadraba con lo que el cliente transfiere. */
+export const aBs = (montoEur: number, tasaEurBs: number) =>
+  Math.round(eur(montoEur) * tasaEurBs * 100) / 100;
 
-/** USD cash: se redondea a $0.25 para que el vuelto físico sea práctico. */
+/** USD: monto EXACTO (14-sep-2026). Antes redondeaba a $0.25 hacia arriba, así
+ *  que un total de €1.96 le pedía $2.00 al cliente pero registraba €1.96: se
+ *  perdían los céntimos en la gaveta sin que ningún reporte los viera. */
 export const aUsdCash = (montoEur: number, tasaEurUsd: number) =>
-  Math.ceil(eur(montoEur) * tasaEurUsd * 4) / 4;
+  Math.round(eur(montoEur) * tasaEurUsd * 100) / 100;
 
 export function convertir(montoEur: number, metodo: Metodo, tasaEurBs: number, tasaEurUsd: number) {
   const { moneda, redondeo } = METODOS[metodo];
@@ -51,7 +55,7 @@ export function convertir(montoEur: number, metodo: Metodo, tasaEurBs: number, t
   if (moneda === "USD") {
     // Zelle y Binance son electrónicos: se transfiere el monto exacto.
     // Solo el efectivo se redondea a $0.25 porque el vuelto es físico.
-    const monto = redondeo === "cash" ? aUsdCash(montoEur, tasaEurUsd) : eur(montoEur * tasaEurUsd);
+    const monto = aUsdCash(montoEur, tasaEurUsd);   // exacto, 2 decimales
     return { moneda, monto, tasa: tasaEurUsd };
   }
   return { moneda, monto: eur(montoEur), tasa: 1 };
@@ -105,7 +109,8 @@ export function ticketCuadra(totalEur: number, pagosEur: number[]) {
 }
 
 export const fmtEur = (n: number) => `€${eur(n).toFixed(2)}`;
-export const fmtBs  = (n: number) => `Bs ${Math.round(n).toLocaleString("es-VE")}`;
+export const fmtBs  = (n: number) =>
+  `Bs ${n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
 
@@ -136,3 +141,17 @@ export function divisasCuadran(
 ): boolean {
   return Math.abs(totalDivisasEur(pagos) - eur(declaradoEur)) <= tolerancia;
 }
+
+
+/** Moneda nativa de un método (la que el barista teclea de verdad). */
+export const monedaDe = (metodo: Metodo) => METODOS[metodo].moneda;
+
+/** Tasa que aplica a un método, según su moneda. */
+export function tasaDe(metodo: Metodo, tasaEurBs: number, tasaEurUsd: number) {
+  const m = METODOS[metodo].moneda;
+  return m === "BS" ? tasaEurBs : m === "USD" ? tasaEurUsd : 1;
+}
+
+/** Símbolo corto para el prefijo del input. */
+export const simboloDe = (metodo: Metodo) =>
+  METODOS[metodo].moneda === "BS" ? "Bs" : METODOS[metodo].moneda === "USD" ? "$" : "\u20ac";

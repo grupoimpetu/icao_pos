@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { METODOS, METODOS_CAJA, fmtEur, fmtBs, fmtUsd, eur, convertir, esDivisa, type Metodo } from "@/lib/money";
+import { fmtEur, fmtBs, fmtUsd, eur, aBs, type Metodo } from "@/lib/money";
+import LineasPago, { sumaEur, sumaDivisasEur, type LineaPago } from "@/components/LineasPago";
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
@@ -15,6 +16,9 @@ type Motivo = { id: number; motivo: string; pct: number | null; autoriza: string
 type Linea = { producto_id: number; nombre: string; precio_unit_eur: number; cant: number };
 
 const CLAVE_BORRADOR = "icao_pos_ticket";
+
+/** Tope de excedente por ticket (debe coincidir con app/venta/acciones.ts). */
+const TOPE_EXCEDENTE = 5;
 
 /** Orden del grid: lo que más se vende, primero (café solo y nevera). */
 const PRIORIDAD = ["CAFÉ CALIENTE", "NEVERA", "CAFÉ FRÍO", "MATCHA & TÉS", "FRAPPÉS & CAO"];
@@ -165,7 +169,7 @@ export default function PantallaVenta({
             <span className="tabular-nums">{fmtEur(subtotal * (1 - pctAuto / 100))}</span>
           </div>
           <p className="text-right text-sm text-cafe-700">
-            {fmtBs(Math.ceil(subtotal * (1 - pctAuto / 100) * turno.tasaEurBs))}
+            {fmtBs(aBs(subtotal * (1 - pctAuto / 100), turno.tasaEurBs))}
           </p>
         </div>
 
@@ -328,7 +332,7 @@ function ModalCobro({
   const hayManual = !!motivo && motivo.autoriza !== "auto";
   const [pctLibre, setPctLibre] = useState(0);
   const [pin, setPin] = useState("");
-  const [pagos, setPagos] = useState<{ metodo: Metodo; montoEur: number; referencia: string }[]>([]);
+  const [pagos, setPagos] = useState<LineaPago[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
@@ -340,29 +344,22 @@ function ModalCobro({
   const pctDivisas = motivos.find((m) => m.id === MOTIVO_DIVISAS)?.pct ?? 0;
   const k = pctDivisas / 100;
   const subtotalNeto = eur(subtotal * (1 - pct / 100));
-  const pagadoDivisas = eur(pagos.filter((p) => esDivisa(p.metodo)).reduce((a, p) => a + p.montoEur, 0));
-  const descDivisas = eur(pagadoDivisas * k);
+  const pagadoDivisas = sumaDivisasEur(pagos, turno.tasaEurBs, turno.tasaEurUsd);
+  // El excedente (billete redondo) no genera descuento: se topa al subtotal neto.
+  const descDivisas = eur(Math.min(pagadoDivisas, subtotalNeto) * k);
   const total = eur(subtotalNeto - descDivisas);
   const declarado = eur(pct < 100 ? pagadoDivisas / (1 - pct / 100) : pagadoDivisas);
-  const pagado = eur(pagos.reduce((a, p) => a + p.montoEur, 0));
+  const pagado = sumaEur(pagos, turno.tasaEurBs, turno.tasaEurUsd);
   const falta = eur(total - pagado);
   const requierePin = !!motivo && ["supervisor", "admin"].includes(motivo.autoriza)
     && !["supervisor", "admin"].includes(rolEmpleado);
-
-  /** Semilla = el monto que CIERRA el ticket con esta linea.
-   *  Si es divisa, agregar x baja el total en x*k, asi que:
-   *    pagado + x = subtotalNeto - (divisasPrev + x)*k  =>  x = (total - pagado)/(1+k) */
-  function addPago(metodo: Metodo) {
-    const restante = esDivisa(metodo) ? eur(Math.max(0, falta) / (1 + k)) : Math.max(0, falta);
-    setPagos((ps) => [...ps, { metodo, montoEur: eur(restante), referencia: "" }]);
-  }
 
   async function ejecutar(dejarAbierto: boolean) {
     setErr(null);
     const r = await cobrarTicket({
       turnoId: turno.id, clienteId: cliente.id,
       lineas: lineas.map((l) => ({ producto_id: l.producto_id, cant: l.cant, precio_unit_eur: l.precio_unit_eur })),
-      pagos: dejarAbierto ? [] : pagos.map((p) => ({ metodo: p.metodo, montoEur: p.montoEur, referencia: p.referencia || undefined })),
+      pagos: dejarAbierto ? [] : pagos.map((p) => ({ metodo: p.metodo, montoOriginal: p.montoOriginal, referencia: p.referencia || undefined })),
       descuentoPct: pct, motivoDescuento: motivo?.motivo ?? null,
       divisasDeclaradoEur: declarado,
       pinAutorizacion: pin || undefined, dejarAbierto,
@@ -421,56 +418,35 @@ function ModalCobro({
             </div>
           )}
           <div className="flex justify-between text-2xl font-black"><span>Total</span><span>{fmtEur(total)}</span></div>
-          <p className="text-right text-sm text-cafe-700">{fmtBs(Math.ceil(total * turno.tasaEurBs))}</p>
+          <p className="text-right text-sm text-cafe-700">{fmtBs(aBs(total, turno.tasaEurBs))}</p>
         </div>
 
-        <div>
-          <p className="label">Método de pago</p>
-          <p className="text-xs text-cafe-700 mb-2">
-            Toca un método y se llena con lo que falta. Puedes agregar varios
-            (ej. Efectivo USD + Pago Móvil) y ajustar el monto de cada uno.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {METODOS_CAJA.map((m) => (
-              <button key={m} onClick={() => addPago(m)} className="btn-sec text-sm">{METODOS[m].label}</button>
-            ))}
-          </div>
-        </div>
-
-        {pagos.map((p, i) => {
-          const conv = convertir(p.montoEur, p.metodo, turno.tasaEurBs, turno.tasaEurUsd);
-          return (
-            <div key={i} className="border border-cafe-200 rounded-xl p-3 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-sm">{METODOS[p.metodo].label}</span>
-                <button className="text-xs underline text-red-600"
-                  onClick={() => setPagos((ps) => ps.filter((_, j) => j !== i))}>Quitar</button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-cafe-700">€</span>
-                <input type="number" step="0.01" className="input" value={p.montoEur}
-                  onChange={(e) => setPagos((ps) => ps.map((x, j) => j === i ? { ...x, montoEur: Number(e.target.value) } : x))} />
-                <span className="text-sm font-bold whitespace-nowrap">
-                  {conv.moneda === "BS" ? fmtBs(conv.monto) : conv.moneda === "USD" ? `$${conv.monto.toFixed(2)}` : fmtEur(conv.monto)}
-                </span>
-              </div>
-              {METODOS[p.metodo].refObligatoria && (
-                <input className="input" placeholder="Referencia / lote (obligatorio)" value={p.referencia}
-                  onChange={(e) => setPagos((ps) => ps.map((x, j) => j === i ? { ...x, referencia: e.target.value } : x))} />
-              )}
-            </div>
-          );
-        })}
+        <LineasPago
+          pagos={pagos} setPagos={setPagos}
+          tasaEurBs={turno.tasaEurBs} tasaEurUsd={turno.tasaEurUsd}
+          faltaEur={falta} k={k}
+        />
 
         {!!pagos.length && (
           <div className="text-sm font-bold space-y-0.5">
-            <p className={Math.abs(falta) <= 0.01 ? "text-green-700" : "text-cafe-800"}>
-              {Math.abs(falta) <= 0.01 ? "Cuadra ✓" : falta > 0 ? `Falta ${fmtEur(falta)}` : `Sobra ${fmtEur(-falta)}`}
+            <p className={falta <= 0.01 ? "text-green-700" : "text-cafe-800"}>
+              {Math.abs(falta) <= 0.01
+                ? "Cuadra ✓"
+                : falta > 0
+                  ? `Falta ${fmtEur(falta)}`
+                  : `Cuadra ✓ · el cliente paga ${fmtEur(-falta)} de más`}
             </p>
+            {falta < -0.01 && (
+              <p className="text-cafe-700 font-normal">
+                {-falta > TOPE_EXCEDENTE
+                  ? <span className="text-red-600 font-bold">Ese excedente es muy alto. Revisa los montos.</span>
+                  : <>Se registra {fmtEur(-falta)} como excedente: la gaveta va a cuadrar exacto.</>}
+              </p>
+            )}
             {pagadoDivisas > 0 && (
               <p className="text-cafe-700 font-normal">
                 En divisa: {fmtUsd(eur(pagadoDivisas / turno.tasaEurUsd))}
-                {pagado - pagadoDivisas > 0.01 && <> · En Bs: {fmtBs(Math.ceil((pagado - pagadoDivisas) * turno.tasaEurBs))}</>}
+                {pagado - pagadoDivisas > 0.01 && <> · En Bs: {fmtBs(aBs(pagado - pagadoDivisas, turno.tasaEurBs))}</>}
                 {descDivisas > 0 && <span className="text-green-700"> · {pctDivisas}% divisa aplicado</span>}
               </p>
             )}
@@ -480,7 +456,7 @@ function ModalCobro({
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || Math.abs(falta) > 0.01}
+          disabled={pend || !pagos.length || falta > 0.01 || -falta > TOPE_EXCEDENTE}
           onClick={() => start(() => ejecutar(false))}>
           {pend ? "Procesando…" : `Confirmar ${fmtEur(total)}`}
         </button>
@@ -502,7 +478,7 @@ function Recibo({ r, onNuevo }: { r: any; onNuevo: () => void }) {
     `Comprobante ${r.correlativo}\n\n` +
     r.lineas.map((l: any) => `${l.cant}x ${l.nombre} — €${(l.precio * l.cant).toFixed(2)}`).join("\n") +
     (r.descuentoEur > 0 ? `\nDescuento −€${r.descuentoEur.toFixed(2)}` : "") +
-    `\n\nTOTAL €${r.total.toFixed(2)} (Bs ${Math.ceil(r.total * r.tasaBs).toLocaleString("es-VE")})\n\n` +
+    `\n\nTOTAL €${r.total.toFixed(2)} (${fmtBs(aBs(r.total, r.tasaBs))})\n\n` +
     `Comprobante interno de control, no es factura fiscal.`
   );
   const wa = r.telefono ? `https://wa.me/${r.telefono.replace(/\D/g, "")}?text=${texto}` : null;
@@ -515,7 +491,10 @@ function Recibo({ r, onNuevo }: { r: any; onNuevo: () => void }) {
         <h1 className="text-xl font-black">{r.abierto ? "Cuenta abierta" : "Cobrado"}</h1>
         <p className="text-sm text-cafe-700">{r.correlativo} · {r.cliente}</p>
         <p className="text-3xl font-black">{fmtEur(r.total)}</p>
-        <p className="text-sm text-cafe-700">{fmtBs(Math.ceil(r.total * r.tasaBs))}</p>
+        <p className="text-sm text-cafe-700">{fmtBs(aBs(r.total, r.tasaBs))}</p>
+        {r.excedenteEur > 0.01 && (
+          <p className="text-xs text-cafe-700">Pagó {fmtEur(r.excedenteEur)} de más (excedente registrado)</p>
+        )}
 
         <div className="text-left text-sm border-t border-cafe-200 pt-3">
           {r.lineas.map((l: any, i: number) => (

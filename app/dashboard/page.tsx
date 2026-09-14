@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion, puede } from "@/lib/session";
-import { METODOS, fmtEur, fmtBs, type Metodo } from "@/lib/money";
+import { METODOS, fmtEur, fmtBs, type Metodo, aBs } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ export default async function DashboardPage() {
   const maxMetodo = Math.max(1, ...(resumen ?? []).map((r: any) => Number(r.total_eur)));
 
   const kpis = [
-    { t: "Vendido", v: fmtEur(totalEur), s: fmtBs(Math.ceil(totalEur * Number(turno.tasa_eur_bs))) },
+    { t: "Vendido", v: fmtEur(totalEur), s: fmtBs(aBs(totalEur, Number(turno.tasa_eur_bs))) },
     { t: "Tickets", v: String(pagados.length), s: abiertos.length ? `${abiertos.length} sin cobrar` : "todos cobrados" },
     { t: "Ticket promedio", v: fmtEur(ticketProm), s: "por venta" },
     { t: "Descuentos", v: fmtEur(descuentos), s: totalEur ? `${Math.round(descuentos / (totalEur + descuentos) * 100)}% del bruto` : "—" },

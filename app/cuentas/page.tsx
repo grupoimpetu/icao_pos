@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion } from "@/lib/session";
-import { fmtEur, fmtBs } from "@/lib/money";
+import { fmtEur, fmtBs, aBs } from "@/lib/money";
 import CobrarCuenta from "@/components/CobrarCuenta";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +84,7 @@ export default async function CuentasPage({ searchParams }: { searchParams: { e?
             <div className="flex items-end justify-between border-t border-cafe-200 pt-2">
               <div>
                 <p className="text-2xl font-black">{fmtEur(Number(t.total_eur))}</p>
-                <p className="text-sm text-cafe-700">{fmtBs(Math.ceil(Number(t.total_eur) * tasaBs))}</p>
+                <p className="text-sm text-cafe-700">{fmtBs(aBs(Number(t.total_eur), tasaBs))}</p>
               </div>
               <CobrarCuenta
                 ticketId={t.id}
