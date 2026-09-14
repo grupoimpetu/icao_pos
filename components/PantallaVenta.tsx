@@ -328,40 +328,33 @@ function ModalCobro({
   const hayManual = !!motivo && motivo.autoriza !== "auto";
   const [pctLibre, setPctLibre] = useState(0);
   const [pin, setPin] = useState("");
-  const [porcion, setPorcion] = useState<"nada" | "todo" | "parte">("nada");
-  const [parteEur, setParteEur] = useState(0);
   const [pagos, setPagos] = useState<{ metodo: Metodo; montoEur: number; referencia: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
   const pct = motivo ? (motivo.pct ?? pctLibre) : 0;
 
-  // 5% divisas: REGLA automatica, no boton. Solo sobre la porcion declarada.
+  // % divisas: REGLA automatica. CAMBIO 14-sep-2026: ya NO se declara aparte.
+  // Se DERIVA de las lineas de pago en divisa que el barista registro. Una sola
+  // fuente de verdad => se puede combinar cualquier cantidad de metodos y monedas.
   const pctDivisas = motivos.find((m) => m.id === MOTIVO_DIVISAS)?.pct ?? 0;
-  const declarado = eur(
-    porcion === "todo" ? subtotal
-    : porcion === "parte" ? Math.min(Math.max(0, parteEur), subtotal)
-    : 0
-  );
-  const baseDivisas = eur(declarado * (1 - pct / 100));
-  const descDivisas = eur(baseDivisas * (pctDivisas / 100));
-  const total = eur(subtotal * (1 - pct / 100) - descDivisas);
-  // El precio ancla en EUR es solo referencia: en la práctica se recibe USD 1:1.
-  // El cliente ENTREGA en divisa exactamente lo declarado (divisaObjetivo); el
-  // 5% de descuento ya está dentro del total, así que el resto va en bolívares.
-  // Lo que el cliente ENTREGA en divisa. Si declaró más divisa que el total
-  // (o eligió "Todo"), se cobra el total en divisa y no queda nada en Bs.
-  const divisaObjetivo = eur(Math.min(baseDivisas, total));
-  const bsObjetivo = eur(total - divisaObjetivo);     // el resto, en bolívares
+  const k = pctDivisas / 100;
+  const subtotalNeto = eur(subtotal * (1 - pct / 100));
+  const pagadoDivisas = eur(pagos.filter((p) => esDivisa(p.metodo)).reduce((a, p) => a + p.montoEur, 0));
+  const descDivisas = eur(pagadoDivisas * k);
+  const total = eur(subtotalNeto - descDivisas);
+  const declarado = eur(pct < 100 ? pagadoDivisas / (1 - pct / 100) : pagadoDivisas);
   const pagado = eur(pagos.reduce((a, p) => a + p.montoEur, 0));
   const falta = eur(total - pagado);
-  const pagadoDivisas = eur(pagos.filter((p) => esDivisa(p.metodo)).reduce((a, p) => a + p.montoEur, 0));
-  const divisaCuadra = Math.abs(pagadoDivisas - divisaObjetivo) <= 0.01;
   const requierePin = !!motivo && ["supervisor", "admin"].includes(motivo.autoriza)
     && !["supervisor", "admin"].includes(rolEmpleado);
 
+  /** Semilla = el monto que CIERRA el ticket con esta linea.
+   *  Si es divisa, agregar x baja el total en x*k, asi que:
+   *    pagado + x = subtotalNeto - (divisasPrev + x)*k  =>  x = (total - pagado)/(1+k) */
   function addPago(metodo: Metodo) {
-    setPagos((ps) => [...ps, { metodo, montoEur: Math.max(0, falta), referencia: "" }]);
+    const restante = esDivisa(metodo) ? eur(Math.max(0, falta) / (1 + k)) : Math.max(0, falta);
+    setPagos((ps) => [...ps, { metodo, montoEur: eur(restante), referencia: "" }]);
   }
 
   async function ejecutar(dejarAbierto: boolean) {
@@ -415,30 +408,6 @@ function ModalCobro({
           )}
         </div>
 
-        <div>
-          <p className="label">¿Cuánto paga en divisas? (USD · EUR · Zelle · Binance)</p>
-          <div className="grid grid-cols-3 gap-2">
-            {([["nada","Nada"],["todo","Todo"],["parte","Parte"]] as const).map(([v,l]) => (
-              <button key={v} onClick={() => setPorcion(v)}
-                className={`btn text-base py-3 ${porcion === v ? "bg-cafe-800 text-white" : "bg-cafe-200"}`}>
-                {l}
-              </button>
-            ))}
-          </div>
-          {porcion === "parte" && (
-            <input type="number" step="0.01" min={0} max={subtotal} className="input mt-2"
-              placeholder="€ del subtotal que paga en divisas"
-              value={parteEur || ""} onChange={(e) => setParteEur(Number(e.target.value))} />
-          )}
-          {declarado > 0 && (
-            <p className="mt-2 text-xs text-cafe-700">
-              Cobra <strong>{fmtUsd(eur(divisaObjetivo / turno.tasaEurUsd))}</strong> en divisa
-              {bsObjetivo > 0.01 && <> + <strong>{fmtBs(Math.ceil(bsObjetivo * turno.tasaEurBs))}</strong> en bolívares</>}.
-              {descDivisas > 0 && <span className="text-green-700"> (5% divisa ya aplicado)</span>}
-            </p>
-          )}
-        </div>
-
         <div className="rounded-xl bg-cafe-50 p-3">
           <div className="flex justify-between text-sm"><span>Subtotal</span><span>{fmtEur(subtotal)}</span></div>
           {pct > 0 && (
@@ -457,6 +426,10 @@ function ModalCobro({
 
         <div>
           <p className="label">Método de pago</p>
+          <p className="text-xs text-cafe-700 mb-2">
+            Toca un método y se llena con lo que falta. Puedes agregar varios
+            (ej. Efectivo USD + Pago Móvil) y ajustar el monto de cada uno.
+          </p>
           <div className="grid grid-cols-2 gap-2">
             {METODOS_CAJA.map((m) => (
               <button key={m} onClick={() => addPago(m)} className="btn-sec text-sm">{METODOS[m].label}</button>
@@ -494,9 +467,11 @@ function ModalCobro({
             <p className={Math.abs(falta) <= 0.01 ? "text-green-700" : "text-cafe-800"}>
               {Math.abs(falta) <= 0.01 ? "Cuadra ✓" : falta > 0 ? `Falta ${fmtEur(falta)}` : `Sobra ${fmtEur(-falta)}`}
             </p>
-            {declarado > 0 && !divisaCuadra && (
-              <p className="text-red-600">
-                En divisa debes cobrar {fmtUsd(eur(divisaObjetivo / turno.tasaEurUsd))} y llevas {fmtUsd(eur(pagadoDivisas / turno.tasaEurUsd))}.
+            {pagadoDivisas > 0 && (
+              <p className="text-cafe-700 font-normal">
+                En divisa: {fmtUsd(eur(pagadoDivisas / turno.tasaEurUsd))}
+                {pagado - pagadoDivisas > 0.01 && <> · En Bs: {fmtBs(Math.ceil((pagado - pagadoDivisas) * turno.tasaEurBs))}</>}
+                {descDivisas > 0 && <span className="text-green-700"> · {pctDivisas}% divisa aplicado</span>}
               </p>
             )}
           </div>
@@ -505,7 +480,7 @@ function ModalCobro({
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || Math.abs(falta) > 0.01 || (declarado > 0 && !divisaCuadra)}
+          disabled={pend || !pagos.length || Math.abs(falta) > 0.01}
           onClick={() => start(() => ejecutar(false))}>
           {pend ? "Procesando…" : `Confirmar ${fmtEur(total)}`}
         </button>

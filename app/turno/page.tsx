@@ -18,20 +18,38 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
     .eq("estado", "abierto").maybeSingle();
 
   // Tasa sugerida solo si hay que abrir turno.
-  let sugerida: { valor: number; fuente: string } | null = null;
+  //
+  //  CAMBIO 14-sep-2026 (bug del sábado): antes se buscaba la fila cuya `fecha`
+  //  fuera HOY (y calculada en UTC). Los sábados no había fila "de hoy" con la
+  //  tasa que el BCV publica el viernes por la tarde, así que se abría el turno
+  //  con tasa vieja. Ahora se toma SIEMPRE LA ÚLTIMA CAPTURA, sin importar de
+  //  qué día sea la fila, y se compara con la API en vivo: si la API trae algo
+  //  más nuevo, gana la API. La fecha se calcula en horario de Caracas.
+  let sugerida: { valor: number; fuente: string; capturada: string | null } | null = null;
   if (!turno) {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Caracas" });
+
     const { data: guardada } = await db
-      .from("tasas").select("*").eq("fecha", hoy)
+      .from("tasas").select("*")
       .order("capturada_ts", { ascending: false }).limit(1).maybeSingle();
 
-    if (guardada) sugerida = { valor: Number(guardada.eur_bs), fuente: guardada.fuente };
-    else {
-      const r = await obtenerTasaBcv();
-      if (r.ok) {
-        await db.from("tasas").upsert({ fecha: hoy, eur_bs: r.eurBs, fuente: r.fuente });
-        sugerida = { valor: r.eurBs, fuente: r.fuente };
+    const r = await obtenerTasaBcv();
+
+    if (r.ok) {
+      // La API manda. Si difiere de lo guardado, se guarda la de hoy.
+      if (!guardada || Number(guardada.eur_bs) !== r.eurBs || guardada.fecha !== hoy) {
+        await db.from("tasas").upsert(
+          { fecha: hoy, eur_bs: r.eurBs, fuente: r.fuente, capturada_ts: new Date().toISOString() },
+          { onConflict: "fecha,fuente" }
+        );
       }
+      sugerida = { valor: r.eurBs, fuente: r.fuente, capturada: new Date().toISOString() };
+    } else if (guardada) {
+      sugerida = {
+        valor: Number(guardada.eur_bs),
+        fuente: `${guardada.fuente} (última captura)`,
+        capturada: guardada.capturada_ts ?? null,
+      };
     }
   }
 

@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/tasa", "schedule": "0 10 * * *" }
+    { "path": "/api/tasa", "schedule": "0 10 * * *" },
+    { "path": "/api/tasa", "schedule": "0 1 * * *" }
   ]
 }

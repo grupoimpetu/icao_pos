@@ -8,7 +8,7 @@ export default function FormAbrirTurno({
   sugerida,
 }: {
   accion: (fd: FormData) => Promise<void>;
-  sugerida: { valor: number; fuente: string } | null;
+  sugerida: { valor: number; fuente: string; capturada?: string | null } | null;
 }) {
   const [tasa, setTasa] = useState(sugerida?.valor?.toString() ?? "");
   const manual = !sugerida || Number(tasa) !== sugerida.valor;
@@ -19,7 +19,13 @@ export default function FormAbrirTurno({
 
       {sugerida ? (
         <p className="text-sm text-cafe-700">
-          Tasa tomada de <strong>{sugerida.fuente}</strong>. Verifícala antes de abrir.
+          Tasa tomada de <strong>{sugerida.fuente}</strong>
+          {sugerida.capturada && (
+            <> · capturada {new Date(sugerida.capturada).toLocaleString("es-VE", {
+              timeZone: "America/Caracas", day: "2-digit", month: "2-digit",
+              hour: "2-digit", minute: "2-digit",
+            })}</>
+          )}. Verifícala contra bcv.org.ve antes de abrir.
         </p>
       ) : (
         <p className="rounded-xl bg-yellow-100 text-yellow-900 p-3 text-sm font-semibold">

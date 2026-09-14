@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { leerSesion } from "@/lib/session";
-import { construirPago, ticketCuadra, eur, divisasCuadran, totalDivisasEur, type Metodo } from "@/lib/money";
+import { construirPago, ticketCuadra, eur, totalDivisasEur, type Metodo } from "@/lib/money";
 
 /* ================= Búsqueda y alta de clientes ================= */
 
@@ -112,20 +112,16 @@ export async function cobrarTicket(input: {
 
   const descuentoEur = eur(subtotal * (descuentoPct / 100));
 
-  // --- 5% divisas: REGLA, no criterio. Sale de motivos_descuento id=2.
-  // Aplica solo sobre la porcion que el barista declaro que se paga en divisa.
-  const declarado = eur(Math.max(0, Number(input.divisasDeclaradoEur) || 0));
-  if (declarado > subtotal + 0.01)
-    return { ok: false as const, error: "La porcion en divisas supera el subtotal" };
-
+  // --- % divisas: REGLA, no criterio. Sale de motivos_descuento id=2.
+  //
+  //  CAMBIO 14-sep-2026: la porcion en divisa YA NO se declara aparte. Se
+  //  DERIVA de las lineas de pago que el barista registro. Antes habia dos
+  //  fuentes de verdad (el selector "Nada/Todo/Parte" y los metodos de pago)
+  //  y si no coincidian el cobro se bloqueaba — por eso no se podia combinar
+  //  efectivo + Pago Movil. Ahora hay UNA sola fuente: los pagos.
   const { data: mDiv } = await db
     .from("motivos_descuento").select("pct").eq("id", 2).maybeSingle();
   const pctDivisas = Number(mDiv?.pct ?? 0);
-  // el 5% se calcula sobre la porcion YA descontada, no sobre el bruto
-  const baseDivisas = eur(declarado * (1 - descuentoPct / 100));
-  const descuentoDivisasEur = eur(baseDivisas * (pctDivisas / 100));
-
-  const total = eur(subtotal - descuentoEur - descuentoDivisasEur);
 
   // --- Pagos: se reconstruyen en el servidor con construirPago() ---
   let pagos: ReturnType<typeof construirPago>[] = [];
@@ -137,18 +133,30 @@ export async function cobrarTicket(input: {
     } catch (e: any) {
       return { ok: false as const, error: e.message };
     }
-    // El cliente ENTREGA en divisa la porción declarada (ya neta del descuento
-    // manual). El 5% divisa vive dentro del total, NO se descuenta de lo que
-    // entrega en dólares; el resto va en bolívares. Si declaró más divisa que
-    // el total (o "Todo"), se cobra el total en divisa: min(baseDivisas, total).
-    const divisaObjetivo = eur(Math.min(baseDivisas, total));
-    if (!divisasCuadran(divisaObjetivo, pagos)) {
-      const objetivoUsd = eur(divisaObjetivo / tasaUsd).toFixed(2);
-      const pagadoUsd = eur(totalDivisasEur(pagos) / tasaUsd).toFixed(2);
-      return { ok: false as const, error: `En divisa debías cobrar $${objetivoUsd} pero se registraron $${pagadoUsd}` };
+    if (pagos.some((p) => !(p.monto_eur > 0)))
+      return { ok: false as const, error: "Hay una linea de pago en cero. Quitala o ponle monto." };
+  }
+
+  // Lo efectivamente entregado en divisa (neto, ya con el descuento manual
+  // aplicado porque el barista cobra sobre el total con descuento).
+  const baseDivisas = eur(totalDivisasEur(pagos));
+  const descuentoDivisasEur = eur(baseDivisas * (pctDivisas / 100));
+  // Para el ticket abierto todavia no hay pagos: se guarda 0 y se recalcula al cobrar.
+  const declarado = input.dejarAbierto ? 0 : eur(baseDivisas / (1 - descuentoPct / 100 || 1));
+
+  const total = eur(subtotal - descuentoEur - descuentoDivisasEur);
+
+  if (!input.dejarAbierto) {
+    if (!ticketCuadra(total, pagos.map((p) => p.monto_eur))) {
+      const suma = eur(pagos.reduce((a, p) => a + p.monto_eur, 0));
+      const dif = eur(total - suma);
+      return {
+        ok: false as const,
+        error: dif > 0
+          ? `Faltan ${dif.toFixed(2)} para completar el total (${total.toFixed(2)})`
+          : `Sobran ${(-dif).toFixed(2)} sobre el total (${total.toFixed(2)})`,
+      };
     }
-    if (!ticketCuadra(total, pagos.map((p) => p.monto_eur)))
-      return { ok: false as const, error: "Los pagos no suman el total del ticket" };
   }
 
   // --- Correlativo por turno: T{turno}-{n} ---
