@@ -36,9 +36,9 @@ type Fila = {
 };
 
 export default function FormCierre({
-  turnoId, conceptos, totalEur, hayAbiertos, empleado, aperturaTs, tasaBs, vueltos, wallet,
+  turnoId, conceptos, totalEur, cobradoEur, hayAbiertos, empleado, aperturaTs, tasaBs, vueltos, wallet,
 }: {
-  wallet: ResumenWallet;
+  wallet: ResumenWallet; cobradoEur: number;
   turnoId: number; conceptos: Concepto[]; totalEur: number; hayAbiertos: boolean;
   empleado: string; aperturaTs: string; tasaBs: number; vueltos: ResumenVueltos;
 }) {
@@ -72,7 +72,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="Z" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={listo} vueltos={vueltos} wallet={wallet}
+        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} cobradoEur={cobradoEur} filas={filas} descuadres={listo} vueltos={vueltos} wallet={wallet}
         onSalir={() => router.push("/turno")}
       />
     );
@@ -81,7 +81,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="X" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={0} vueltos={vueltos} wallet={wallet}
+        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} cobradoEur={cobradoEur} filas={filas} descuadres={0} vueltos={vueltos} wallet={wallet}
         onSalir={() => setVerX(false)}
       />
     );
@@ -132,7 +132,7 @@ export default function FormCierre({
   return (
     <>
       <div className="card p-4 flex items-center justify-between">
-        <span className="font-bold">Vendido en el turno</span>
+        <span className="font-bold">Vendido en el turno{Math.abs(cobradoEur - totalEur) > 0.01 ? ` · cobrado ${fmtEur(cobradoEur)}` : ""}</span>
         <div className="flex items-center gap-3">
           <button onClick={() => setVerX(true)} className="btn-sec text-xs">Reporte X (corte)</button>
           <span className="text-2xl font-black">{fmtEur(totalEur)}</span>
@@ -195,9 +195,9 @@ export default function FormCierre({
 /* ================= Reporte Z / X en pantalla ================= */
 
 function ReporteZX({
-  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, vueltos, wallet, onSalir,
+  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, vueltos, wallet, cobradoEur, onSalir,
 }: {
-  wallet: ResumenWallet;
+  wallet: ResumenWallet; cobradoEur: number;
   modo: "Z" | "X";
   turnoId: number; empleado: string; aperturaTs: string; cierreTs: string | null;
   tasaBs: number; totalEur: number; filas: Fila[]; descuadres: number; vueltos: ResumenVueltos; onSalir: () => void;
@@ -225,6 +225,8 @@ function ReporteZX({
     else L.push(`Corte: ${fecha(new Date().toISOString())}`);
     L.push(`Tasa: ${tasaBs.toFixed(2)} Bs/€`);
     L.push(`Vendido en el turno: ${fmtEur(totalEur)}`);
+    if (Math.abs(cobradoEur - totalEur) > 0.01)
+      L.push(`Cobrado (incluye lo pagado de más): ${fmtEur(cobradoEur)}`);
     L.push(`—`);
     for (const f of conMovimiento) {
       if (esZ) {
@@ -267,6 +269,12 @@ function ReporteZX({
           <span>Vendido en el turno</span>
           <span className="font-black">{fmtEur(totalEur)}</span>
         </div>
+        {Math.abs(cobradoEur - totalEur) > 0.01 && (
+          <div className="flex justify-between text-xs text-cafe-700">
+            <span>Cobrado (incluye lo pagado de más)</span>
+            <span>{fmtEur(cobradoEur)}</span>
+          </div>
+        )}
 
         <table className="w-full text-xs border-t border-cafe-200 pt-2">
           <thead>

@@ -150,9 +150,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
             <Link href="/venta" className="btn-acc grid place-items-center text-lg">Vender</Link>
             <Link href="/cierre" className="btn-sec grid place-items-center">Cerrar caja</Link>
           </div>
-          <Link href="/wallet" className="btn-sec grid place-items-center min-h-[56px] font-semibold">
-            Wallet ICAO · recargas y saldo
-          </Link>
+
         </>
       ) : (
         <FormAbrirTurno accion={abrir} sugerida={sugerida} />
@@ -163,6 +161,10 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
           Cuentas abiertas
         </Link>
       )}
+
+      <Link href="/wallet" className="btn-sec grid place-items-center min-h-[56px] font-semibold">
+        Wallet ICAO · recargas y saldo
+      </Link>
 
       {puede(s.rol, "supervisor") && (
         <div className="grid grid-cols-2 gap-3">

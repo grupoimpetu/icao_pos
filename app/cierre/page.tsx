@@ -51,7 +51,14 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
     consumosEur: sumW("consumo"), vueltosEur: sumW("vuelto"),
   };
 
-  const totalEur = (resumen ?? []).reduce((a: number, r: any) => a + Number(r.total_eur), 0);
+  // VENDIDO = suma de los TICKETS, no de los pagos (20-sep-2026).
+  // Los pagos incluyen el excedente del billete redondo, así que un vuelto de
+  // $17 inflaba el "vendido" del turno. Lo cobrado se muestra aparte.
+  const { data: tks } = await db
+    .from("tickets").select("total_eur")
+    .eq("turno_id", turno.id).eq("estado", "pagado").is("anula_ticket_id", null);
+  const totalEur = Math.round((tks ?? []).reduce((a, t) => a + Number(t.total_eur), 0) * 100) / 100;
+  const cobradoEur = Math.round((resumen ?? []).reduce((a: number, r: any) => a + Number(r.total_eur), 0) * 100) / 100;
 
   /* ---------- VUELTOS (19-sep): el efectivo devuelto SALE de la gaveta ---------- */
   const { data: vs } = await db
@@ -136,7 +143,8 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
       <FormCierre
         turnoId={turno.id}
         conceptos={conceptos}
-        totalEur={Math.round(totalEur * 100) / 100}
+        totalEur={totalEur}
+        cobradoEur={cobradoEur}
         hayAbiertos={!!abiertos}
         empleado={s.nombre}
         aperturaTs={turno.apertura_ts}
