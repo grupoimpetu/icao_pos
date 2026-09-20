@@ -38,18 +38,38 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
   }
   const totalEur = (resumen ?? []).reduce((a: number, r: any) => a + Number(r.total_eur), 0);
 
+  /* ---------- VUELTOS (19-sep): el efectivo devuelto SALE de la gaveta ---------- */
+  const { data: vs } = await db
+    .from("vueltos").select("metodo,monto_original,estado,pm_telefono")
+    .eq("turno_id", turno.id).neq("estado", "anulado");
+  const vueltoEf = (m: string) => (vs ?? [])
+    .filter((v) => v.metodo === m).reduce((a, v) => a + Number(v.monto_original), 0);
+  const vueltoUsd = Math.round(vueltoEf("efectivo_usd") * 100) / 100;
+  const vueltoBs = Math.round(vueltoEf("efectivo_bs") * 100) / 100;
+  const pm = (vs ?? []).filter((v) => v.metodo === "bs_pago_movil");
+  const vueltos = {
+    usdEntregado: vueltoUsd, bsEntregado: vueltoBs,
+    pmCant: pm.length,
+    pmBs: Math.round(pm.reduce((a, v) => a + Number(v.monto_original), 0) * 100) / 100,
+    pmPendientes: pm.filter((v) => v.estado === "pendiente").length,
+  };
+
   /* ---------- EFECTIVO: se cuenta físico ---------- */
   const conceptos: Concepto[] = [];
 
   conceptos.push({
     concepto: "Efectivo Bs", metodo: "efectivo_bs", moneda: "BS", tipo: "efectivo",
-    esperado: Number(turno.fondo_bs) + (porMetodo.get("efectivo_bs")?.monto ?? 0),
-    nota: "Fondo inicial + cobros en billetes de bolívares, menos el vuelto entregado.",
+    esperado: Math.round((Number(turno.fondo_bs) + (porMetodo.get("efectivo_bs")?.monto ?? 0) - vueltoBs) * 100) / 100,
+    nota: vueltoBs > 0
+      ? `Fondo inicial + cobros en bolívares − Bs ${vueltoBs.toLocaleString("es-VE", { minimumFractionDigits: 2 })} de vuelto entregado.`
+      : "Fondo inicial + cobros en billetes de bolívares.",
   });
   conceptos.push({
     concepto: "Efectivo USD", metodo: "efectivo_usd", moneda: "USD", tipo: "efectivo",
-    esperado: Number(turno.fondo_usd) + (porMetodo.get("efectivo_usd")?.monto ?? 0),
-    nota: "Fondo inicial + cobros en dólares.",
+    esperado: Math.round((Number(turno.fondo_usd) + (porMetodo.get("efectivo_usd")?.monto ?? 0) - vueltoUsd) * 100) / 100,
+    nota: vueltoUsd > 0
+      ? `Fondo inicial + cobros en dólares − $${vueltoUsd.toFixed(2)} de vuelto entregado.`
+      : "Fondo inicial + cobros en dólares.",
   });
   conceptos.push({
     concepto: "Efectivo EUR", metodo: "efectivo_eur", moneda: "EUR", tipo: "efectivo",
@@ -106,6 +126,7 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
         empleado={s.nombre}
         aperturaTs={turno.apertura_ts}
         tasaBs={Number(turno.tasa_eur_bs)}
+        vueltos={vueltos}
       />
     </main>
   );

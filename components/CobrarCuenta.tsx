@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { fmtEur, fmtBs, eur, type Metodo } from "@/lib/money";
 import LineasPago, { sumaEur, type LineaPago } from "@/components/LineasPago";
 import { cobrarCuentaAbierta } from "@/app/venta/acciones";
+import EditorVuelto, { estadoVuelto, vueltosPayload, type VueltoLinea } from "@/components/Vuelto";
 
 export default function CobrarCuenta({
   ticketId, correlativo, cliente, totalEur, tasaEurBs, tasaEurUsd,
@@ -14,12 +15,15 @@ export default function CobrarCuenta({
 }) {
   const [abierto, setAbierto] = useState(false);
   const [pagos, setPagos] = useState<LineaPago[]>([]);
+  const [vueltos, setVueltos] = useState<VueltoLinea[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
   const router = useRouter();
 
   const pagado = sumaEur(pagos, tasaEurBs, tasaEurUsd);
   const falta = eur(totalEur - pagado);
+  const excedente = falta < -0.01 ? -falta : 0;
+  const ev = estadoVuelto(excedente, vueltos, tasaEurBs, tasaEurUsd);
 
   if (!abierto) {
     return <button className="btn-acc" onClick={() => setAbierto(true)}>Cobrar</button>;
@@ -52,21 +56,25 @@ export default function CobrarCuenta({
               ? "Cuadra ✓"
               : falta > 0
                 ? `Falta ${fmtEur(falta)}`
-                : -falta > 5
-                  ? `Excedente muy alto (${fmtEur(-falta)}). Revisa los montos.`
-                  : `Cuadra ✓ · paga ${fmtEur(-falta)} de más (se registra como excedente)`}
+                : `Cuadra ✓ · paga ${fmtEur(-falta)} de más`}
           </p>
+        )}
+
+        {excedente > 0 && (
+          <EditorVuelto excedenteEur={excedente} vueltos={vueltos} setVueltos={setVueltos}
+            tasaEurBs={tasaEurBs} tasaEurUsd={tasaEurUsd} />
         )}
 
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || falta > 0.01 || -falta > 5}
+          disabled={pend || !pagos.length || falta > 0.01 || (excedente > 0 && !!ev.bloqueo)}
           onClick={() => start(async () => {
             setErr(null);
             const r = await cobrarCuentaAbierta({
               ticketId,
               pagos: pagos.map((p) => ({ metodo: p.metodo, montoOriginal: p.montoOriginal, referencia: p.referencia || undefined })),
+              vueltos: excedente ? vueltosPayload(vueltos) : [],
             });
             if (r.ok) { setAbierto(false); router.refresh(); } else setErr(r.error);
           })}>

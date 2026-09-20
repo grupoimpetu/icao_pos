@@ -175,6 +175,10 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
             className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
             Reportes
           </Link>
+          <Link href="/vueltos"
+            className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">
+            Vueltos Pago Móvil
+          </Link>
           {puede(s.rol, "admin") && (
             <Link href="/clientes"
               className="btn-sec grid place-items-center min-h-[72px] text-base font-semibold">

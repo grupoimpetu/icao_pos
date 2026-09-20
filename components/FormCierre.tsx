@@ -7,8 +7,23 @@ import { cerrarCaja } from "@/app/cierre/acciones";
 import type { Concepto } from "@/app/cierre/page";
 
 const simbolo = (m: string) => (m === "BS" ? "Bs" : m === "USD" ? "$" : "€");
+
+/* Bs con céntimos: el display NUNCA redondea. Si la pantalla dice 25.112,35,
+   ese es el número exacto que cuadra. */
 const fmt = (m: string, n: number) =>
-  m === "BS" ? `Bs ${Math.round(n).toLocaleString("es-VE")}` : `${simbolo(m)}${n.toFixed(2)}`;
+  m === "BS"
+    ? `Bs ${n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `${simbolo(m)}${n.toFixed(2)}`;
+
+/* Tolerancia por realidad física, no por moneda:
+   - efectivo en Bs: no existen monedas de céntimo → hasta 1 Bs es ruido
+   - todo lo demás (lotes, estados de cuenta, $): al céntimo */
+const tolerancia = (moneda: string, tipo: "efectivo" | "electronico") =>
+  moneda === "BS" && tipo === "efectivo" ? 1 : 0.01;
+
+export type ResumenVueltos = {
+  usdEntregado: number; bsEntregado: number; pmCant: number; pmBs: number; pmPendientes: number;
+};
 
 type Fila = {
   concepto: string; metodo: string | null; moneda: string;
@@ -17,10 +32,10 @@ type Fila = {
 };
 
 export default function FormCierre({
-  turnoId, conceptos, totalEur, hayAbiertos, empleado, aperturaTs, tasaBs,
+  turnoId, conceptos, totalEur, hayAbiertos, empleado, aperturaTs, tasaBs, vueltos,
 }: {
   turnoId: number; conceptos: Concepto[]; totalEur: number; hayAbiertos: boolean;
-  empleado: string; aperturaTs: string; tasaBs: number;
+  empleado: string; aperturaTs: string; tasaBs: number; vueltos: ResumenVueltos;
 }) {
   const [decl, setDecl] = useState<Record<string, { declarado: string; nota: string }>>(
     Object.fromEntries(conceptos.map((c) => [c.concepto, { declarado: "", nota: "" }]))
@@ -37,7 +52,10 @@ export default function FormCierre({
     const vacio = d.declarado.trim() === "";
     const declarado = vacio ? 0 : Number(d.declarado);
     const dif = declarado - c.esperado;
-    return { ...c, declarado, vacio, dif, nota: d.nota, cuadra: Math.abs(dif) <= 0.01 };
+    return {
+      ...c, declarado, vacio, dif, nota: d.nota,
+      cuadra: Math.abs(dif) <= tolerancia(c.moneda, c.tipo),
+    };
   }), [conceptos, decl]);
 
   const sinContar = filas.filter((f) => f.vacio && f.esperado !== 0).length;
@@ -49,7 +67,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="Z" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={listo}
+        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={listo} vueltos={vueltos}
         onSalir={() => router.push("/turno")}
       />
     );
@@ -58,7 +76,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="X" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={0}
+        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={0} vueltos={vueltos}
         onSalir={() => setVerX(false)}
       />
     );
@@ -88,7 +106,7 @@ export default function FormCierre({
           onChange={(e) => setDecl((d) => ({ ...d, [f.concepto]: { ...d[f.concepto], declarado: e.target.value } }))}
         />
         {!f.vacio && (
-          <span className={`text-sm font-bold whitespace-nowrap w-28 text-right ${
+          <span className={`text-sm font-bold whitespace-nowrap w-32 text-right ${
             f.cuadra ? "text-green-700" : f.dif > 0 ? "text-blue-700" : "text-red-600"}`}>
             {f.cuadra ? "cuadra ✓" : `${f.dif > 0 ? "sobra" : "falta"} ${fmt(f.moneda, Math.abs(f.dif))}`}
           </span>
@@ -172,12 +190,17 @@ export default function FormCierre({
 /* ================= Reporte Z / X en pantalla ================= */
 
 function ReporteZX({
-  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, onSalir,
+  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, vueltos, onSalir,
 }: {
   modo: "Z" | "X";
   turnoId: number; empleado: string; aperturaTs: string; cierreTs: string | null;
-  tasaBs: number; totalEur: number; filas: Fila[]; descuadres: number; onSalir: () => void;
+  tasaBs: number; totalEur: number; filas: Fila[]; descuadres: number; vueltos: ResumenVueltos; onSalir: () => void;
 }) {
+  const bs2 = (n: number) => `Bs ${n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const lineasVuelto: string[] = [];
+  if (vueltos.usdEntregado > 0) lineasVuelto.push(`Vuelto entregado en $ efectivo: $${vueltos.usdEntregado.toFixed(2)} (ya descontado del esperado)`);
+  if (vueltos.bsEntregado > 0) lineasVuelto.push(`Vuelto entregado en Bs efectivo: ${bs2(vueltos.bsEntregado)} (ya descontado del esperado)`);
+  if (vueltos.pmCant > 0) lineasVuelto.push(`Vueltos por Pago Móvil: ${vueltos.pmCant} · ${bs2(vueltos.pmBs)} — ${vueltos.pmPendientes} PENDIENTE(S) de pago por administración`);
   const esZ = modo === "Z";
   const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-VE") : "—");
   const conMovimiento = filas.filter((f) => f.esperado !== 0 || (esZ && !f.vacio));
@@ -201,6 +224,7 @@ function ReporteZX({
         L.push(`${f.concepto}: ${fmt(f.moneda, f.esperado)}`);
       }
     }
+    if (lineasVuelto.length) { L.push(`—`); L.push(...lineasVuelto); }
     if (esZ) {
       L.push(`—`);
       L.push(descuadres === 0 ? `Cuadró ✓` : `${descuadres} concepto(s) con descuadre`);
@@ -209,7 +233,7 @@ function ReporteZX({
     L.push(`—`);
     L.push(`Documento interno de control. No es documento fiscal.`);
     return L.join("\n");
-  }, [modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, conMovimiento, descuadres, filas, esZ]);
+  }, [modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, conMovimiento, descuadres, filas, esZ, lineasVuelto.join("|")]);
 
   const waHref = `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
@@ -259,6 +283,11 @@ function ReporteZX({
           </tbody>
         </table>
 
+        {lineasVuelto.length > 0 && (
+          <div className="rounded-lg bg-orange-50 border border-orange-200 p-2 text-xs space-y-0.5">
+            {lineasVuelto.map((l, i) => <p key={i}>{l}</p>)}
+          </div>
+        )}
         {esZ && (
           <p className={`text-sm font-black ${descuadres === 0 ? "text-green-700" : "text-red-600"}`}>
             {descuadres === 0 ? "Cuadró ✓" : `${descuadres} concepto(s) con descuadre`}

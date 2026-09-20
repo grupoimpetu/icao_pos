@@ -41,7 +41,45 @@ export async function crearCliente(f: { nombre: string; telefono?: string; alumn
 
 /** Tope de excedente por ticket. Sobre esto no es "billete redondo", es un
  *  error de tecleo y hay que frenarlo antes de que ensucie la caja. */
-const TOPE_EXCEDENTE_EUR = 5;
+const TOPE_EXCEDENTE_EUR = 5;   // aplica a lo que SE QUEDA en caja, no al vuelto
+
+/* ================= Vueltos (19-sep-2026 · Fase A) =================
+ *  El excedente ya no tiene tope: si el billete es grande, se devuelve.
+ *  El vuelto se reparte en efectivo (sale de la gaveta) y/o Pago Móvil
+ *  (queda PENDIENTE para administración). Lo no devuelto queda en caja,
+ *  y eso sí tiene tope de €5: más que eso es un vuelto olvidado. */
+export type VueltoEntrada = {
+  metodo: "efectivo_usd" | "efectivo_bs" | "bs_pago_movil";
+  montoOriginal: number; pmTelefono?: string; pmCedula?: string; pmBanco?: string;
+};
+
+function prepararVueltos(vs: VueltoEntrada[] | undefined, excedenteEur: number, tasaBs: number, tasaUsd: number) {
+  const filas = (vs ?? []).map((v) => {
+    if (!["efectivo_usd", "efectivo_bs", "bs_pago_movil"].includes(v.metodo)) throw new Error("Método de vuelto inválido");
+    const moneda = v.metodo === "efectivo_usd" ? "USD" : "BS";
+    const tasa = moneda === "USD" ? tasaUsd : tasaBs;
+    const monto = Math.round(Number(v.montoOriginal) * 100) / 100;
+    if (!(monto > 0)) throw new Error("Hay una línea de vuelto en cero");
+    const esPm = v.metodo === "bs_pago_movil";
+    if (esPm && (!v.pmTelefono?.trim() || !v.pmCedula?.trim() || !v.pmBanco?.trim()))
+      throw new Error("El vuelto por Pago Móvil exige teléfono, cédula y banco del cliente");
+    return {
+      metodo: v.metodo, moneda, monto_original: monto, tasa_aplicada: tasa,
+      monto_eur: eur(monto / tasa),
+      estado: esPm ? "pendiente" : "entregado",
+      pm_telefono: esPm ? v.pmTelefono!.trim() : null,
+      pm_cedula: esPm ? v.pmCedula!.trim().toUpperCase() : null,
+      pm_banco: esPm ? v.pmBanco!.trim() : null,
+    };
+  });
+  const devuelto = eur(filas.reduce((a, f) => a + f.monto_eur, 0));
+  const queda = eur(excedenteEur - devuelto);
+  if (queda < -0.01)
+    throw new Error(`El vuelto (${devuelto.toFixed(2)}) supera lo pagado de más (${excedenteEur.toFixed(2)})`);
+  if (queda > TOPE_EXCEDENTE_EUR)
+    throw new Error(`Quedan ${queda.toFixed(2)} sin devolver. Regístralo como vuelto (efectivo o Pago Móvil).`);
+  return filas;
+}
 
 export type LineaTicket = { producto_id: number; cant: number; precio_unit_eur: number };
 /** CAMBIO 14-sep-2026: el barista teclea en la MONEDA DEL MÉTODO (Bs o $),
@@ -53,6 +91,7 @@ export async function cobrarTicket(input: {
   clienteId: number;
   lineas: LineaTicket[];
   pagos: PagoEntrada[];
+  vueltos?: VueltoEntrada[];
   descuentoPct: number;
   divisasDeclaradoEur?: number;
   motivoDescuento: string | null;
@@ -166,11 +205,11 @@ export async function cobrarTicket(input: {
       return { ok: false as const, error: `Faltan ${dif.toFixed(2)} para completar el total (${total.toFixed(2)})` };
 
     excedenteEur = eur(Math.max(0, -dif));
-    if (excedenteEur > TOPE_EXCEDENTE_EUR)
-      return {
-        ok: false as const,
-        error: `El excedente (${excedenteEur.toFixed(2)}) supera el tope de ${TOPE_EXCEDENTE_EUR.toFixed(2)}. Revisa los montos: parece un error de tecleo.`,
-      };
+  }
+  let vueltos: ReturnType<typeof prepararVueltos> = [];
+  if (!input.dejarAbierto) {
+    try { vueltos = prepararVueltos(input.vueltos, excedenteEur, tasaBs, tasaUsd); }
+    catch (e: any) { return { ok: false as const, error: e.message }; }
   }
 
   // --- Correlativo por turno: T{turno}-{n} ---
@@ -211,6 +250,16 @@ export async function cobrarTicket(input: {
     }
   }
 
+  if (vueltos.length) {
+    const { error: eV } = await db.from("vueltos").insert(
+      vueltos.map((v) => ({ ...v, ticket_id: ticket.id, turno_id: turno.id, creado_por: ses.empleadoId }))
+    );
+    if (eV) {
+      console.error("[cobrarTicket] vueltos:", eV.message);
+      return { ok: false as const, error: "El ticket se cobró pero falló el registro del vuelto. Avisa al supervisor." };
+    }
+  }
+
   const { data: cli } = await db
     .from("clientes").select("nombre,telefono").eq("id", input.clienteId).single();
 
@@ -218,6 +267,7 @@ export async function cobrarTicket(input: {
     ok: true as const,
     ticket: {
       id: ticket.id, correlativo, subtotal, descuentoEur, total, excedenteEur,
+      vueltos: vueltos.map((v) => ({ metodo: v.metodo, moneda: v.moneda, monto: v.monto_original, estado: v.estado })),
       abierto: !!input.dejarAbierto,
       cliente: cli?.nombre ?? "", telefono: cli?.telefono ?? null,
       tasaBs, lineas: input.lineas.map((l) => ({
@@ -233,6 +283,7 @@ export async function cobrarTicket(input: {
 export async function cobrarCuentaAbierta(input: {
   ticketId: number;
   pagos: PagoEntrada[];
+  vueltos?: VueltoEntrada[];
 }) {
   const ses = leerSesion();
   if (!ses) return { ok: false as const, error: "Sesión expirada" };
@@ -264,8 +315,11 @@ export async function cobrarCuentaAbierta(input: {
   if (difCA > 0.01)
     return { ok: false as const, error: `Faltan ${difCA.toFixed(2)} para completar el total` };
   const excedenteCA = Math.max(0, Number((-difCA).toFixed(2)));
-  if (excedenteCA > TOPE_EXCEDENTE_EUR)
-    return { ok: false as const, error: `El excedente (${excedenteCA.toFixed(2)}) supera el tope de ${TOPE_EXCEDENTE_EUR.toFixed(2)}.` };
+  let vueltosCA: ReturnType<typeof prepararVueltos>;
+  try {
+    vueltosCA = prepararVueltos(input.vueltos, excedenteCA,
+      Number(turno.tasa_eur_bs), Number(turno.tasa_eur_usd_cash));
+  } catch (e: any) { return { ok: false as const, error: e.message }; }
 
   const { error: eP } = await db.from("pagos").insert(pagos.map((p) => ({ ...p, ticket_id: t.id })));
   if (eP) {
@@ -279,6 +333,16 @@ export async function cobrarCuentaAbierta(input: {
   if (eU) {
     console.error("[cobrarCuentaAbierta] cierre:", eU.message);
     return { ok: false as const, error: "El pago quedó registrado pero el ticket no se cerró. Avisa al supervisor." };
+  }
+
+  if (vueltosCA.length) {
+    const { error: eV } = await db.from("vueltos").insert(
+      vueltosCA.map((v) => ({ ...v, ticket_id: t.id, turno_id: t.turno_id, creado_por: ses.empleadoId }))
+    );
+    if (eV) {
+      console.error("[cobrarCuentaAbierta] vueltos:", eV.message);
+      return { ok: false as const, error: "La cuenta se cobró pero falló el registro del vuelto. Avisa al supervisor." };
+    }
   }
 
   await db.from("audit_log").insert({

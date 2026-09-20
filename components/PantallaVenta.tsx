@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fmtEur, fmtBs, fmtUsd, eur, aBs, type Metodo } from "@/lib/money";
 import LineasPago, { sumaEur, sumaDivisasEur, type LineaPago } from "@/components/LineasPago";
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
+import EditorVuelto, { estadoVuelto, vueltosPayload, labelVuelto, CONFIRMAR_EXCEDENTE_EUR, type VueltoLinea } from "@/components/Vuelto";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
 type Cliente = { id: number; nombre: string; alumno?: string | null; telefono?: string | null; zona?: string | null; tipo: string; descuento_default_pct: number };
@@ -17,8 +18,6 @@ type Linea = { producto_id: number; nombre: string; precio_unit_eur: number; can
 
 const CLAVE_BORRADOR = "icao_pos_ticket";
 
-/** Tope de excedente por ticket (debe coincidir con app/venta/acciones.ts). */
-const TOPE_EXCEDENTE = 5;
 
 /** Orden del grid: lo que más se vende, primero (café solo y nevera). */
 const PRIORIDAD = ["CAFÉ CALIENTE", "NEVERA", "CAFÉ FRÍO", "MATCHA & TÉS", "FRAPPÉS & CAO"];
@@ -333,6 +332,7 @@ function ModalCobro({
   const [pctLibre, setPctLibre] = useState(0);
   const [pin, setPin] = useState("");
   const [pagos, setPagos] = useState<LineaPago[]>([]);
+  const [vueltos, setVueltos] = useState<VueltoLinea[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
@@ -351,15 +351,20 @@ function ModalCobro({
   const declarado = eur(pct < 100 ? pagadoDivisas / (1 - pct / 100) : pagadoDivisas);
   const pagado = sumaEur(pagos, turno.tasaEurBs, turno.tasaEurUsd);
   const falta = eur(total - pagado);
+  const excedente = falta < -0.01 ? -falta : 0;
+  const ev = estadoVuelto(excedente, vueltos, turno.tasaEurBs, turno.tasaEurUsd);
   const requierePin = !!motivo && ["supervisor", "admin"].includes(motivo.autoriza)
     && !["supervisor", "admin"].includes(rolEmpleado);
 
   async function ejecutar(dejarAbierto: boolean) {
     setErr(null);
+    if (!dejarAbierto && excedente > CONFIRMAR_EXCEDENTE_EUR &&
+        !confirm(`El cliente paga ${fmtEur(excedente)} de más. ¿Los montos están bien?`)) return;
     const r = await cobrarTicket({
       turnoId: turno.id, clienteId: cliente.id,
       lineas: lineas.map((l) => ({ producto_id: l.producto_id, cant: l.cant, precio_unit_eur: l.precio_unit_eur })),
       pagos: dejarAbierto ? [] : pagos.map((p) => ({ metodo: p.metodo, montoOriginal: p.montoOriginal, referencia: p.referencia || undefined })),
+      vueltos: dejarAbierto || !excedente ? [] : vueltosPayload(vueltos),
       descuentoPct: pct, motivoDescuento: motivo?.motivo ?? null,
       divisasDeclaradoEur: declarado,
       pinAutorizacion: pin || undefined, dejarAbierto,
@@ -436,13 +441,6 @@ function ModalCobro({
                   ? `Falta ${fmtEur(falta)}`
                   : `Cuadra ✓ · el cliente paga ${fmtEur(-falta)} de más`}
             </p>
-            {falta < -0.01 && (
-              <p className="text-cafe-700 font-normal">
-                {-falta > TOPE_EXCEDENTE
-                  ? <span className="text-red-600 font-bold">Ese excedente es muy alto. Revisa los montos.</span>
-                  : <>Se registra {fmtEur(-falta)} como excedente: la gaveta va a cuadrar exacto.</>}
-              </p>
-            )}
             {pagadoDivisas > 0 && (
               <p className="text-cafe-700 font-normal">
                 En divisa: {fmtUsd(eur(pagadoDivisas / turno.tasaEurUsd))}
@@ -453,10 +451,15 @@ function ModalCobro({
           </div>
         )}
 
+        {excedente > 0 && (
+          <EditorVuelto excedenteEur={excedente} vueltos={vueltos} setVueltos={setVueltos}
+            tasaEurBs={turno.tasaEurBs} tasaEurUsd={turno.tasaEurUsd} />
+        )}
+
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || falta > 0.01 || -falta > TOPE_EXCEDENTE}
+          disabled={pend || !pagos.length || falta > 0.01 || (excedente > 0 && !!ev.bloqueo)}
           onClick={() => start(() => ejecutar(false))}>
           {pend ? "Procesando…" : `Confirmar ${fmtEur(total)}`}
         </button>
@@ -493,8 +496,14 @@ function Recibo({ r, onNuevo }: { r: any; onNuevo: () => void }) {
         <p className="text-3xl font-black">{fmtEur(r.total)}</p>
         <p className="text-sm text-cafe-700">{fmtBs(aBs(r.total, r.tasaBs))}</p>
         {r.excedenteEur > 0.01 && (
-          <p className="text-xs text-cafe-700">Pagó {fmtEur(r.excedenteEur)} de más (excedente registrado)</p>
+          <p className="text-xs text-cafe-700">Pagó {fmtEur(r.excedenteEur)} de más</p>
         )}
+        {r.vueltos?.map((v: any, i: number) => (
+          <p key={i} className={`text-sm font-bold ${v.estado === "pendiente" ? "text-orange-700" : "text-cafe-800"}`}>
+            Vuelto {labelVuelto(v.metodo)}: {v.moneda === "USD" ? fmtUsd(v.monto) : fmtBs(v.monto)}
+            {v.estado === "pendiente" ? " · PENDIENTE (lo paga administración)" : " · entregado"}
+          </p>
+        ))}
 
         <div className="text-left text-sm border-t border-cafe-200 pt-3">
           {r.lineas.map((l: any, i: number) => (
