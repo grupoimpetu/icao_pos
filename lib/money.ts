@@ -28,7 +28,8 @@ export const METODOS: Record<Metodo, DefMetodo> = {
   efectivo_eur:     { label: "Efectivo EUR",   moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },  // en VE el efectivo entra en USD; se conserva por histórico
   zelle:            { label: "Zelle ($)",      moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
   binance:          { label: "Binance (USDT)", moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
-  wallet:           { label: "Wallet ICAO",    moneda: "EUR", refObligatoria: false, redondeo: "exacto", enCaja: false },
+  // Wallet (20-sep-2026): se teclea en $ como el cliente la ve. Por dentro el libro vive en EUR.
+  wallet:           { label: "Wallet ICAO",    moneda: "USD", refObligatoria: false, redondeo: "exacto", enCaja: false },
   // Transferencia en Bs se retiró de caja: operativamente es lo mismo que Pago Móvil.
   bs_transferencia: { label: "Bs Transferencia", moneda: "BS", refObligatoria: true, redondeo: "bs",     enCaja: false },
 };
@@ -121,6 +122,9 @@ export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
  *  Se deriva de METODOS: no mantener listas paralelas.
  */
 export function esDivisa(metodo: Metodo): boolean {
+  // La wallet NO da descuento por divisa al consumir: el beneficio se da como
+  // BONO al recargar en divisa (decisión owner 19-sep-2026).
+  if (metodo === "wallet") return false;
   return METODOS[metodo].moneda !== "BS";
 }
 

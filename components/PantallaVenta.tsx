@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fmtEur, fmtBs, fmtUsd, eur, aBs, type Metodo } from "@/lib/money";
 import LineasPago, { sumaEur, sumaDivisasEur, type LineaPago } from "@/components/LineasPago";
 import { buscarClientes, crearCliente, cobrarTicket } from "@/app/venta/acciones";
+import { infoWallet } from "@/app/wallet/acciones";
 import EditorVuelto, { estadoVuelto, vueltosPayload, labelVuelto, CONFIRMAR_EXCEDENTE_EUR, type VueltoLinea } from "@/components/Vuelto";
 
 type Producto = { id: number; nombre: string; categoria: string; precio_eur: number; solo_eventos: boolean };
@@ -191,6 +192,7 @@ export default function PantallaVenta({
         <ModalCobro
           turno={turno} cliente={cliente} lineas={lineas} motivos={motivos}
           rolEmpleado={empleado.rol}
+          esGenerico={genericos.some((g) => g.id === cliente.id)}
           onCerrar={() => setCobrando(false)}
           onListo={(r) => { setCobrando(false); setRecibo(r); setLineas([]); setCliente(null); }}
           onError={(m) => { setCobrando(false); setError(m); }}
@@ -316,9 +318,10 @@ function FormClienteNuevo({
 
 function ModalCobro({
   turno, cliente, lineas, motivos, rolEmpleado, onCerrar, onListo, onError,
+  esGenerico,
 }: {
   turno: { id: number; tasaEurBs: number; tasaEurUsd: number };
-  cliente: Cliente; lineas: Linea[]; motivos: Motivo[]; rolEmpleado: string;
+  cliente: Cliente; lineas: Linea[]; motivos: Motivo[]; rolEmpleado: string; esGenerico: boolean;
   onCerrar: () => void; onListo: (r: any) => void; onError: (m: string) => void;
 }) {
   const subtotal = eur(lineas.reduce((a, l) => a + l.precio_unit_eur * l.cant, 0));
@@ -333,6 +336,11 @@ function ModalCobro({
   const [pin, setPin] = useState("");
   const [pagos, setPagos] = useState<LineaPago[]>([]);
   const [vueltos, setVueltos] = useState<VueltoLinea[]>([]);
+  // Wallet (Fase B)
+  const [wSaldo, setWSaldo] = useState<number | null>(null);
+  const [wPin, setWPin] = useState("");
+  const [wMsg, setWMsg] = useState<string | null>(null);
+  const usaWallet = pagos.some((p) => p.metodo === "wallet");
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
@@ -365,6 +373,7 @@ function ModalCobro({
       lineas: lineas.map((l) => ({ producto_id: l.producto_id, cant: l.cant, precio_unit_eur: l.precio_unit_eur })),
       pagos: dejarAbierto ? [] : pagos.map((p) => ({ metodo: p.metodo, montoOriginal: p.montoOriginal, referencia: p.referencia || undefined })),
       vueltos: dejarAbierto || !excedente ? [] : vueltosPayload(vueltos),
+      walletPin: usaWallet ? wPin : undefined,
       descuentoPct: pct, motivoDescuento: motivo?.motivo ?? null,
       divisasDeclaradoEur: declarado,
       pinAutorizacion: pin || undefined, dejarAbierto,
@@ -432,6 +441,38 @@ function ModalCobro({
           faltaEur={falta} k={k}
         />
 
+        {!esGenerico && (
+          <div className="rounded-xl border-2 border-green-200 bg-green-50 p-3 space-y-2">
+            {wSaldo === null ? (
+              <button className="btn-sec w-full text-sm" onClick={async () => {
+                setWMsg(null);
+                const r = await infoWallet(cliente.id);
+                if (!r.ok) return setWMsg(r.error);
+                if (!r.tienePin) return setWMsg("Este cliente aún no tiene Wallet. Se activa con su primera recarga.");
+                if (r.bloqueado) return setWMsg("Wallet bloqueada 15 min por PIN fallido.");
+                setWSaldo(r.saldoEur);
+              }}>Pagar con Wallet ICAO</button>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-green-800">
+                  Wallet · saldo ${(wSaldo * turno.tasaEurUsd).toFixed(2)}
+                </p>
+                <div className="flex gap-2">
+                  <input className="input" type="password" inputMode="numeric" maxLength={4}
+                    placeholder="PIN del cliente" value={wPin} onChange={(e) => setWPin(e.target.value)} />
+                  <button className="btn-acc text-sm whitespace-nowrap" disabled={usaWallet || wSaldo <= 0 || falta <= 0.01}
+                    onClick={() => {
+                      const usar = Math.min(wSaldo, falta);
+                      setPagos((ps) => [...ps, { metodo: "wallet" as Metodo, montoOriginal: Math.round(usar * turno.tasaEurUsd * 100) / 100, referencia: "" }]);
+                    }}>Usar saldo</button>
+                </div>
+                <p className="text-xs text-green-800">El cliente teclea su PIN. Si no alcanza, el resto va por otro método.</p>
+              </>
+            )}
+            {wMsg && <p className="text-xs font-semibold text-cafe-800">{wMsg}</p>}
+          </div>
+        )}
+
         {!!pagos.length && (
           <div className="text-sm font-bold space-y-0.5">
             <p className={falta <= 0.01 ? "text-green-700" : "text-cafe-800"}>
@@ -453,13 +494,13 @@ function ModalCobro({
 
         {excedente > 0 && (
           <EditorVuelto excedenteEur={excedente} vueltos={vueltos} setVueltos={setVueltos}
-            tasaEurBs={turno.tasaEurBs} tasaEurUsd={turno.tasaEurUsd} />
+            tasaEurBs={turno.tasaEurBs} tasaEurUsd={turno.tasaEurUsd} permitirWallet={!esGenerico} />
         )}
 
         {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
 
         <button className="btn-acc w-full text-lg"
-          disabled={pend || !pagos.length || falta > 0.01 || (excedente > 0 && !!ev.bloqueo)}
+          disabled={pend || !pagos.length || falta > 0.01 || (excedente > 0 && !!ev.bloqueo) || (usaWallet && wPin.length !== 4)}
           onClick={() => start(() => ejecutar(false))}>
           {pend ? "Procesando…" : `Confirmar ${fmtEur(total)}`}
         </button>

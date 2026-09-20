@@ -4,16 +4,17 @@ import { useState, useTransition } from "react";
 import { guardarConfig } from "@/app/config/acciones";
 
 export default function FormConfig({
-  pctDivisas, tasaEurUsdCash,
-}: { pctDivisas: number; tasaEurUsdCash: number }) {
+  pctDivisas, tasaEurUsdCash, bonoWalletPct = 0,
+}: { pctDivisas: number; tasaEurUsdCash: number; bonoWalletPct?: number }) {
   const [pct, setPct] = useState(String(pctDivisas));
   const [tasa, setTasa] = useState(String(tasaEurUsdCash));
+  const [bono, setBono] = useState(String(bonoWalletPct));
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
   const sucio =
-    Number(pct) !== pctDivisas || Number(tasa) !== tasaEurUsdCash;
+    Number(pct) !== pctDivisas || Number(tasa) !== tasaEurUsdCash || Number(bono) !== bonoWalletPct;
 
   return (
     <section className="card p-4 space-y-5">
@@ -39,6 +40,19 @@ export default function FormConfig({
         </p>
       </div>
 
+      <div>
+        <p className="label">Bono Wallet por recarga en divisa</p>
+        <div className="flex items-center gap-2">
+          <input type="number" step="0.5" min={0} max={50} className="input"
+            value={bono} onChange={(e) => { setBono(e.target.value); setMsg(null); }} />
+          <span className="font-black text-cafe-800">%</span>
+        </div>
+        <p className="mt-1 text-xs text-cafe-700">
+          Ej. 5% → recarga $20 en efectivo/Zelle/Binance y recibe $21. En Bs no hay bono.
+          Reemplaza al descuento divisa dentro de la Wallet. 0 = apagado.
+        </p>
+      </div>
+
       {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
       {msg && <p className="text-sm font-semibold text-green-700">{msg}</p>}
 
@@ -46,7 +60,7 @@ export default function FormConfig({
         onClick={() => start(async () => {
           setErr(null); setMsg(null);
           const r = await guardarConfig({
-            pctDivisas: Number(pct), tasaEurUsdCash: Number(tasa),
+            pctDivisas: Number(pct), tasaEurUsdCash: Number(tasa), bonoWalletPct: Number(bono),
           });
           if (r.ok) setMsg(r.sinCambios ? "Sin cambios" : "Guardado ✓");
           else setErr(r.error);

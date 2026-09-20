@@ -36,6 +36,21 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
       moneda: r.moneda, monto: Number(r.total_original), eur: Number(r.total_eur),
     });
   }
+  /* ---------- WALLET (20-sep): las RECARGAS entran a caja por su método, pero NO son venta ---------- */
+  const { data: wm } = await db.from("wallet_movimientos")
+    .select("tipo,metodo,monto_original,monto_eur").eq("turno_id", turno.id);
+  const recargas = (wm ?? []).filter((m) => m.tipo === "recarga");
+  for (const r of recargas) {
+    const cur = porMetodo.get(r.metodo!) ?? { moneda: "", monto: 0, eur: 0 };
+    porMetodo.set(r.metodo!, { ...cur, monto: Math.round((cur.monto + Number(r.monto_original)) * 100) / 100 });
+  }
+  const sumW = (t: string) => Math.round((wm ?? []).filter((m) => m.tipo === t)
+    .reduce((a, m) => a + Math.abs(Number(m.monto_eur)), 0) * 100) / 100;
+  const wallet = {
+    recargasN: recargas.length, recargasEur: sumW("recarga"), bonosEur: sumW("bono"),
+    consumosEur: sumW("consumo"), vueltosEur: sumW("vuelto"),
+  };
+
   const totalEur = (resumen ?? []).reduce((a: number, r: any) => a + Number(r.total_eur), 0);
 
   /* ---------- VUELTOS (19-sep): el efectivo devuelto SALE de la gaveta ---------- */
@@ -127,6 +142,7 @@ export default async function CierrePage({ searchParams }: { searchParams: { e?:
         aperturaTs={turno.apertura_ts}
         tasaBs={Number(turno.tasa_eur_bs)}
         vueltos={vueltos}
+        wallet={wallet}
       />
     </main>
   );

@@ -16,6 +16,8 @@ export default async function ConfigPage() {
     .from("motivos_descuento").select("pct").eq("id", 2).maybeSingle();
   const { data: cfg } = await db
     .from("config").select("valor").eq("clave", "tasa_eur_usd_cash").maybeSingle();
+  const { data: cfgBono } = await db
+    .from("config").select("valor").eq("clave", "wallet_bono_divisa_pct").maybeSingle();
 
   const { data: log } = await db
     .from("audit_log")
@@ -37,6 +39,7 @@ export default async function ConfigPage() {
       <FormConfig
         pctDivisas={Number(mDiv?.pct ?? 0)}
         tasaEurUsdCash={Number(cfg?.valor ?? 1)}
+        bonoWalletPct={Number(cfgBono?.valor ?? 0)}
       />
 
       <section className="card p-4">

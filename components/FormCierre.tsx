@@ -25,6 +25,10 @@ export type ResumenVueltos = {
   usdEntregado: number; bsEntregado: number; pmCant: number; pmBs: number; pmPendientes: number;
 };
 
+export type ResumenWallet = {
+  recargasN: number; recargasEur: number; bonosEur: number; consumosEur: number; vueltosEur: number;
+};
+
 type Fila = {
   concepto: string; metodo: string | null; moneda: string;
   tipo: "efectivo" | "electronico"; esperado: number;
@@ -32,8 +36,9 @@ type Fila = {
 };
 
 export default function FormCierre({
-  turnoId, conceptos, totalEur, hayAbiertos, empleado, aperturaTs, tasaBs, vueltos,
+  turnoId, conceptos, totalEur, hayAbiertos, empleado, aperturaTs, tasaBs, vueltos, wallet,
 }: {
+  wallet: ResumenWallet;
   turnoId: number; conceptos: Concepto[]; totalEur: number; hayAbiertos: boolean;
   empleado: string; aperturaTs: string; tasaBs: number; vueltos: ResumenVueltos;
 }) {
@@ -67,7 +72,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="Z" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={listo} vueltos={vueltos}
+        cierreTs={cierreTs} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={listo} vueltos={vueltos} wallet={wallet}
         onSalir={() => router.push("/turno")}
       />
     );
@@ -76,7 +81,7 @@ export default function FormCierre({
     return (
       <ReporteZX
         modo="X" turnoId={turnoId} empleado={empleado} aperturaTs={aperturaTs}
-        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={0} vueltos={vueltos}
+        cierreTs={null} tasaBs={tasaBs} totalEur={totalEur} filas={filas} descuadres={0} vueltos={vueltos} wallet={wallet}
         onSalir={() => setVerX(false)}
       />
     );
@@ -190,8 +195,9 @@ export default function FormCierre({
 /* ================= Reporte Z / X en pantalla ================= */
 
 function ReporteZX({
-  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, vueltos, onSalir,
+  modo, turnoId, empleado, aperturaTs, cierreTs, tasaBs, totalEur, filas, descuadres, vueltos, wallet, onSalir,
 }: {
+  wallet: ResumenWallet;
   modo: "Z" | "X";
   turnoId: number; empleado: string; aperturaTs: string; cierreTs: string | null;
   tasaBs: number; totalEur: number; filas: Fila[]; descuadres: number; vueltos: ResumenVueltos; onSalir: () => void;
@@ -200,6 +206,10 @@ function ReporteZX({
   const lineasVuelto: string[] = [];
   if (vueltos.usdEntregado > 0) lineasVuelto.push(`Vuelto entregado en $ efectivo: $${vueltos.usdEntregado.toFixed(2)} (ya descontado del esperado)`);
   if (vueltos.bsEntregado > 0) lineasVuelto.push(`Vuelto entregado en Bs efectivo: ${bs2(vueltos.bsEntregado)} (ya descontado del esperado)`);
+  if (wallet.recargasN > 0) lineasVuelto.push(`Recargas Wallet: ${wallet.recargasN} · €${wallet.recargasEur.toFixed(2)} (entraron a caja, ya incluidas en el esperado; NO son venta)`);
+  if (wallet.bonosEur > 0) lineasVuelto.push(`Bonos Wallet regalados: €${wallet.bonosEur.toFixed(2)}`);
+  if (wallet.consumosEur > 0) lineasVuelto.push(`Vendido con Wallet: €${wallet.consumosEur.toFixed(2)} (venta sin entrada de dinero)`);
+  if (wallet.vueltosEur > 0) lineasVuelto.push(`Vueltos abonados a Wallet: €${wallet.vueltosEur.toFixed(2)}`);
   if (vueltos.pmCant > 0) lineasVuelto.push(`Vueltos por Pago Móvil: ${vueltos.pmCant} · ${bs2(vueltos.pmBs)} — ${vueltos.pmPendientes} PENDIENTE(S) de pago por administración`);
   const esZ = modo === "Z";
   const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-VE") : "—");

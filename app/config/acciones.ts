@@ -8,6 +8,7 @@ import { leerSesion, puede } from "@/lib/session";
 export async function guardarConfig(entrada: {
   pctDivisas: number;
   tasaEurUsdCash: number;
+  bonoWalletPct?: number;
 }) {
   const s = leerSesion();
   if (!s) return { ok: false as const, error: "Sesion vencida" };
@@ -56,7 +57,29 @@ export async function guardarConfig(entrada: {
     });
   }
 
+  // --- % bono wallet por recarga en divisa: vive en config
+  let bonoCambio = false;
+  if (entrada.bonoWalletPct !== undefined) {
+    const bono = Number(entrada.bonoWalletPct);
+    if (!Number.isFinite(bono) || bono < 0 || bono > 50)
+      return { ok: false as const, error: "El bono debe estar entre 0 y 50%" };
+    const { data: antesB } = await db.from("config").select("valor").eq("clave", "wallet_bono_divisa_pct").maybeSingle();
+    const bonoAntes = Number(antesB?.valor ?? 0);
+    if (bonoAntes !== bono) {
+      bonoCambio = true;
+      const { error } = await db.from("config")
+        .upsert({ clave: "wallet_bono_divisa_pct", valor: String(bono), updated_at: new Date().toISOString() });
+      if (error) return { ok: false as const, error: error.message };
+      await db.from("audit_log").insert({
+        tabla: "config", registro_id: "wallet_bono_divisa_pct", accion: "update",
+        valores_antes: { valor: String(bonoAntes) }, valores_despues: { valor: String(bono) },
+        empleado_id: s.empleadoId,
+      });
+    }
+  }
+
   revalidatePath("/config");
+  revalidatePath("/wallet");
   revalidatePath("/venta");
-  return { ok: true as const, sinCambios: pctAntes === pct && tasaAntes === tasa };
+  return { ok: true as const, sinCambios: pctAntes === pct && tasaAntes === tasa && !bonoCambio };
 }

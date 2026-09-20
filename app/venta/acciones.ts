@@ -49,14 +49,15 @@ const TOPE_EXCEDENTE_EUR = 5;   // aplica a lo que SE QUEDA en caja, no al vuelt
  *  (queda PENDIENTE para administración). Lo no devuelto queda en caja,
  *  y eso sí tiene tope de €5: más que eso es un vuelto olvidado. */
 export type VueltoEntrada = {
-  metodo: "efectivo_usd" | "efectivo_bs" | "bs_pago_movil";
+  metodo: "efectivo_usd" | "efectivo_bs" | "bs_pago_movil" | "wallet";
   montoOriginal: number; pmTelefono?: string; pmCedula?: string; pmBanco?: string;
 };
 
-function prepararVueltos(vs: VueltoEntrada[] | undefined, excedenteEur: number, tasaBs: number, tasaUsd: number) {
+function prepararVueltos(vs: VueltoEntrada[] | undefined, excedenteEur: number, tasaBs: number, tasaUsd: number, permitirWallet = false) {
   const filas = (vs ?? []).map((v) => {
-    if (!["efectivo_usd", "efectivo_bs", "bs_pago_movil"].includes(v.metodo)) throw new Error("Método de vuelto inválido");
-    const moneda = v.metodo === "efectivo_usd" ? "USD" : "BS";
+    const validos = ["efectivo_usd", "efectivo_bs", "bs_pago_movil", ...(permitirWallet ? ["wallet"] : [])];
+    if (!validos.includes(v.metodo)) throw new Error("Método de vuelto inválido");
+    const moneda = v.metodo === "efectivo_usd" || v.metodo === "wallet" ? "USD" : "BS";
     const tasa = moneda === "USD" ? tasaUsd : tasaBs;
     const monto = Math.round(Number(v.montoOriginal) * 100) / 100;
     if (!(monto > 0)) throw new Error("Hay una línea de vuelto en cero");
@@ -92,6 +93,8 @@ export async function cobrarTicket(input: {
   lineas: LineaTicket[];
   pagos: PagoEntrada[];
   vueltos?: VueltoEntrada[];
+  /** PIN de la wallet del cliente, si paga con wallet. */
+  walletPin?: string;
   descuentoPct: number;
   divisasDeclaradoEur?: number;
   motivoDescuento: string | null;
@@ -206,9 +209,25 @@ export async function cobrarTicket(input: {
 
     excedenteEur = eur(Math.max(0, -dif));
   }
+  // --- Wallet (Fase B): consumo con PIN y vuelto abonado a la wallet ---
+  const { data: cliW } = await db.from("clientes").select("es_generico").eq("id", input.clienteId).single();
+  const walletPermitida = !!cliW && !cliW.es_generico;
+  const walletEur = eur(pagos.filter((p) => p.metodo === "wallet").reduce((a, p) => a + p.monto_eur, 0));
+  if (walletEur > 0) {
+    if (!walletPermitida) return { ok: false as const, error: "Los clientes genéricos no tienen wallet" };
+    if (excedenteEur > 0.01)
+      return { ok: false as const, error: "La wallet no puede pagar de más. Baja el monto de la wallet al restante." };
+    const { data: v } = await db.rpc("wallet_verificar_pin", { p_cliente: input.clienteId, p_pin: input.walletPin ?? "" });
+    if (v !== "ok")
+      return { ok: false as const, error: v === "bloqueado" ? "Wallet bloqueada 15 min por PIN fallido" : v === "sin_pin" ? "El cliente aún no tiene PIN: haz una recarga primero" : "PIN de wallet incorrecto" };
+    const { data: saldo } = await db.rpc("wallet_saldo", { p_cliente: input.clienteId });
+    if (Number(saldo ?? 0) + 0.001 < walletEur)
+      return { ok: false as const, error: `Saldo insuficiente en la wallet (${Number(saldo ?? 0).toFixed(2)})` };
+  }
+
   let vueltos: ReturnType<typeof prepararVueltos> = [];
   if (!input.dejarAbierto) {
-    try { vueltos = prepararVueltos(input.vueltos, excedenteEur, tasaBs, tasaUsd); }
+    try { vueltos = prepararVueltos(input.vueltos, excedenteEur, tasaBs, tasaUsd, walletPermitida); }
     catch (e: any) { return { ok: false as const, error: e.message }; }
   }
 
@@ -257,6 +276,27 @@ export async function cobrarTicket(input: {
     if (eV) {
       console.error("[cobrarTicket] vueltos:", eV.message);
       return { ok: false as const, error: "El ticket se cobró pero falló el registro del vuelto. Avisa al supervisor." };
+    }
+    for (const v of vueltos.filter((x) => x.metodo === "wallet")) {
+      const { error: eW } = await db.rpc("wallet_mover", {
+        p_cliente: input.clienteId, p_tipo: "vuelto", p_monto_eur: v.monto_eur,
+        p_ticket: ticket.id, p_turno: turno.id, p_empleado: ses.empleadoId,
+      });
+      if (eW) {
+        console.error("[cobrarTicket] vuelto wallet:", eW.message);
+        return { ok: false as const, error: "El ticket se cobró pero el vuelto no llegó a la wallet. Avisa al supervisor." };
+      }
+    }
+  }
+
+  if (walletEur > 0) {
+    const { error: eW } = await db.rpc("wallet_mover", {
+      p_cliente: input.clienteId, p_tipo: "consumo", p_monto_eur: -walletEur,
+      p_ticket: ticket.id, p_turno: turno.id, p_empleado: ses.empleadoId,
+    });
+    if (eW) {
+      console.error("[cobrarTicket] consumo wallet:", eW.message);
+      return { ok: false as const, error: "El ticket se cobró pero no se descontó la wallet. Avisa al supervisor." };
     }
   }
 
@@ -310,6 +350,8 @@ export async function cobrarCuentaAbierta(input: {
   } catch (e: any) {
     return { ok: false as const, error: e.message };
   }
+  if (pagos.some((p) => p.metodo === "wallet"))
+    return { ok: false as const, error: "La wallet solo se usa al cobrar en Vender" };
   const sumaCA = pagos.reduce((a, p) => a + p.monto_eur, 0);
   const difCA = Number((total - sumaCA).toFixed(2));
   if (difCA > 0.01)

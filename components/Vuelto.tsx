@@ -10,7 +10,7 @@
 
 import { METODOS, eur, fmtEur, tasaDe, simboloDe, type Metodo } from "@/lib/money";
 
-export type MetodoVuelto = "efectivo_usd" | "efectivo_bs" | "bs_pago_movil";
+export type MetodoVuelto = "efectivo_usd" | "efectivo_bs" | "bs_pago_movil" | "wallet";
 export type VueltoLinea = {
   metodo: MetodoVuelto; montoOriginal: number;
   pmTelefono: string; pmCedula: string; pmBanco: string;
@@ -34,6 +34,7 @@ const OPCIONES: { m: MetodoVuelto; label: string }[] = [
   { m: "efectivo_usd", label: "Vuelto $ efectivo" },
   { m: "efectivo_bs", label: "Vuelto Bs efectivo" },
   { m: "bs_pago_movil", label: "Vuelto por Pago Móvil" },
+  { m: "wallet", label: "Abonar a su Wallet" },
 ];
 
 export function vueltoEnEur(v: VueltoLinea, tasaEurBs: number, tasaEurUsd: number) {
@@ -67,8 +68,9 @@ export const vueltosPayload = (vs: VueltoLinea[]) => vs.map((v) => ({
 }));
 
 export default function EditorVuelto({
-  excedenteEur, vueltos, setVueltos, tasaEurBs, tasaEurUsd,
+  excedenteEur, vueltos, setVueltos, tasaEurBs, tasaEurUsd, permitirWallet = false,
 }: {
+  permitirWallet?: boolean;
   excedenteEur: number;
   vueltos: VueltoLinea[];
   setVueltos: (f: (vs: VueltoLinea[]) => VueltoLinea[]) => void;
@@ -95,8 +97,8 @@ export default function EditorVuelto({
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {OPCIONES.map((o) => (
+      <div className={`grid gap-2 ${permitirWallet ? "grid-cols-2" : "grid-cols-3"}`}>
+        {OPCIONES.filter((o) => permitirWallet || o.m !== "wallet").map((o) => (
           <button key={o.m} onClick={() => agregar(o.m)} className="btn-sec text-xs">{o.label}</button>
         ))}
       </div>
@@ -107,6 +109,7 @@ export default function EditorVuelto({
             <span className="font-semibold text-sm">
               {OPCIONES.find((o) => o.m === v.metodo)!.label}
               {v.metodo === "bs_pago_movil" && <span className="ml-1 text-xs text-orange-700">· queda pendiente</span>}
+              {v.metodo === "wallet" && <span className="ml-1 text-xs text-green-700">· sin dolor de cabeza</span>}
             </span>
             <button className="text-xs underline text-red-600"
               onClick={() => setVueltos((vs) => vs.filter((_, j) => j !== i))}>Quitar</button>
