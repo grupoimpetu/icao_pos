@@ -162,7 +162,7 @@ export default async function TurnoPage({ searchParams }: { searchParams: { e?: 
         </Link>
       )}
 
-      <Link href="/wallet" className="btn-sec grid place-items-center min-h-[56px] font-semibold">
+      <Link href="/canje" className="btn-acc grid place-items-center min-h-[56px] font-semibold">         Canjear puntos · escanear QR       </Link>        <Link href="/wallet" className="btn-sec grid place-items-center min-h-[56px] font-semibold">
         Wallet ICAO · recargas y saldo
       </Link>
 
