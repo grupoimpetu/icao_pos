@@ -306,7 +306,7 @@ export async function cobrarTicket(input: {
   return {
     ok: true as const,
     ticket: {
-      id: ticket.id, correlativo, subtotal, descuentoEur, total, excedenteEur,
+      id: ticket.id, correlativo, subtotal, descuentoEur, total, excedenteEur, puntosAcreditados,
       vueltos: vueltos.map((v) => ({ metodo: v.metodo, moneda: v.moneda, monto: v.monto_original, estado: v.estado })),
       abierto: !!input.dejarAbierto,
       cliente: cli?.nombre ?? "", telefono: cli?.telefono ?? null,
