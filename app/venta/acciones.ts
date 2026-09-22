@@ -301,7 +301,7 @@ export async function cobrarTicket(input: {
   }
 
   const { data: cli } = await db
-    .from("clientes").select("nombre,telefono").eq("id", input.clienteId).single();
+    .from("clientes").select("nombre,telefono").eq("id", input.clienteId).single();    // --- ICAO Rewards C2: acreditar puntos por la venta. NUNCA hace fallar el cobro. ---   let puntosAcreditados = 0;   if (!input.dejarAbierto && total > 0) {     const { data: _pts, error: _ePts } = await db.rpc("acreditar_puntos", {       p_cliente: input.clienteId, p_ref_ticket: String(ticket.id), p_monto_eur: total,     });     if (_ePts) console.error("[cobrarTicket] puntos:", _ePts.message);     else puntosAcreditados = Number(_pts ?? 0);   }
 
   return {
     ok: true as const,
