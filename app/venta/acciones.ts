@@ -331,7 +331,7 @@ export async function cobrarCuentaAbierta(input: {
   const db = supabaseAdmin();
 
   const { data: t, error: eT } = await db
-    .from("tickets").select("id,correlativo,total_eur,estado,turno_id").eq("id", input.ticketId).single();
+    .from("tickets").select("id,correlativo,total_eur,estado,turno_id,cliente_id").eq("id", input.ticketId).single();
   if (eT || !t) return { ok: false as const, error: "Ticket no encontrado" };
   if (t.estado !== "abierto") return { ok: false as const, error: "Esa cuenta ya fue cobrada o anulada" };
 
