@@ -387,7 +387,7 @@ export async function cobrarCuentaAbierta(input: {
     }
   }
 
-  // ICAO Rewards C2: acreditar puntos al cerrar la cuenta abierta (idempotente por ticket)   if (Number(t.total_eur) > 0) {     const { error: _ePts } = await db.rpc("acreditar_puntos", {       p_cliente: (t as any).cliente_id, p_ref_ticket: String(t.id), p_monto_eur: Number(t.total_eur),     });     if (_ePts) console.error("[cobrarCuentaAbierta] puntos:", _ePts.message);   }    await db.from("audit_log").insert({
+  /* ICAO Rewards C2: acreditar puntos al cerrar la cuenta abierta */   if (Number(t.total_eur) > 0) {     const { error: _ePts } = await db.rpc("acreditar_puntos", {       p_cliente: (t as any).cliente_id, p_ref_ticket: String(t.id), p_monto_eur: Number(t.total_eur),     });     if (_ePts) console.error("[cobrarCuentaAbierta] puntos:", _ePts.message);   }    await db.from("audit_log").insert({
     tabla: "tickets", registro_id: String(t.id), accion: "cobrar_cuenta_abierta",
     valores_despues: { total_eur: total, pagos: pagos.length }, empleado_id: ses.empleadoId,
   });
