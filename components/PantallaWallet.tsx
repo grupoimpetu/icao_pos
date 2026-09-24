@@ -6,7 +6,7 @@ import { buscarClientes } from "@/app/venta/acciones";
 import { infoWallet, recargarWallet, resetPinWallet, ajustarWallet } from "@/app/wallet/acciones";
 
 const METODOS_RECARGA: Metodo[] = ["efectivo_usd", "zelle", "binance", "efectivo_bs", "bs_pago_movil", "tdd", "tdc"];
-const TIPO: Record<string, string> = { recarga: "Recarga", bono: "Bono", vuelto: "Vuelto", consumo: "Consumo", ajuste: "Ajuste" };
+const TIPO: Record<string, string> = { recarga: "Recarga", bono: "Bono", vuelto: "Vuelto", consumo: "Consumo", ajuste: "Ajuste", preorden: "Pre-order", reembolso: "Reembolso" };
 
 export default function PantallaWallet({ turno, tasaEurUsd, bonoPct }: {
   turno: { id: number; tasaEurBs: number; tasaEurUsd: number } | null; tasaEurUsd: number; bonoPct: number;
