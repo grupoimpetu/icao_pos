@@ -7,7 +7,7 @@ export type Moneda = "EUR" | "BS" | "USD";
 
 export type Metodo =
   | "efectivo_bs" | "bs_pago_movil" | "efectivo_usd" | "efectivo_eur"
-  | "tdd" | "tdc" | "zelle" | "binance" | "wallet"
+  | "tdd" | "tdc" | "zelle" | "binance" | "wallet" | "preorden" | "stripe"
   | "bs_transferencia";   // legado: no se ofrece en caja, se conserva por histórico
 
 type DefMetodo = {
@@ -30,6 +30,9 @@ export const METODOS: Record<Metodo, DefMetodo> = {
   binance:          { label: "Binance (USDT)", moneda: "USD", refObligatoria: true,  redondeo: "exacto", enCaja: true  },
   // Wallet (20-sep-2026): se teclea en $ como el cliente la ve. Por dentro el libro vive en EUR.
   wallet:           { label: "Wallet ICAO",    moneda: "USD", refObligatoria: false, redondeo: "exacto", enCaja: false },
+  // Fase C3: prepagados desde la app (no entran a gaveta ni al cierre)
+  preorden:         { label: "Pre-order (prepagado)",   moneda: "USD", refObligatoria: false, redondeo: "exacto", enCaja: false },
+  stripe:           { label: "Tarjeta online (Stripe)", moneda: "USD", refObligatoria: false, redondeo: "exacto", enCaja: false },
   // Transferencia en Bs se retiró de caja: operativamente es lo mismo que Pago Móvil.
   bs_transferencia: { label: "Bs Transferencia", moneda: "BS", refObligatoria: true, redondeo: "bs",     enCaja: false },
 };
